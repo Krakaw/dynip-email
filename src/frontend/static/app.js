@@ -18,6 +18,17 @@ emailAddressInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') loadInbox();
 });
 
+// Initialize from URL on page load
+window.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const mailbox = urlParams.get('mailbox');
+    
+    if (mailbox) {
+        emailAddressInput.value = mailbox;
+        loadInbox();
+    }
+});
+
 // Load inbox for the specified email address
 async function loadInbox() {
     const address = emailAddressInput.value.trim();
@@ -28,6 +39,11 @@ async function loadInbox() {
     }
     
     currentAddress = address;
+    
+    // Update URL with mailbox query parameter
+    const url = new URL(window.location);
+    url.searchParams.set('mailbox', address);
+    window.history.pushState({}, '', url);
     
     // Close existing WebSocket connection
     if (websocket) {
