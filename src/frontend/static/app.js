@@ -101,6 +101,32 @@ function showEmailDetail(emailId) {
         ? `<iframe srcdoc="${escapeHtml(email.body)}"></iframe>`
         : `<pre style="white-space: pre-wrap; font-family: inherit;">${escapeHtml(email.body)}</pre>`;
     
+    // Build attachments HTML if any
+    let attachmentsHtml = '';
+    if (email.attachments && email.attachments.length > 0) {
+        attachmentsHtml = `
+            <div class="email-attachments">
+                <h3>📎 Attachments (${email.attachments.length})</h3>
+                <div class="attachments-list">
+                    ${email.attachments.map(att => `
+                        <div class="attachment-item">
+                            <div class="attachment-info">
+                                <span class="attachment-icon">${getFileIcon(att.content_type)}</span>
+                                <div class="attachment-details">
+                                    <div class="attachment-name">${escapeHtml(att.filename)}</div>
+                                    <div class="attachment-meta">${formatFileSize(att.size)} • ${att.content_type}</div>
+                                </div>
+                            </div>
+                            <button class="attachment-download" onclick="downloadAttachment('${email.id}', '${escapeHtml(att.filename)}', '${att.content_type}', '${att.content}')">
+                                Download
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
     emailDetail.innerHTML = `
         <div class="email-header">
             <h2 class="email-subject">${escapeHtml(email.subject)}</h2>
@@ -122,6 +148,7 @@ function showEmailDetail(emailId) {
         <div class="email-body">
             ${bodyContent}
         </div>
+        ${attachmentsHtml}
     `;
     
     // Mark as read (remove new badge)
@@ -255,5 +282,54 @@ function formatDateFull(date) {
         hour: '2-digit',
         minute: '2-digit'
     });
+}
+
+// Download attachment
+function downloadAttachment(emailId, filename, contentType, base64Content) {
+    try {
+        // Decode base64 to binary
+        const binaryString = atob(base64Content);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        // Create blob and download
+        const blob = new Blob([bytes], { type: contentType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Failed to download attachment:', error);
+        alert('Failed to download attachment');
+    }
+}
+
+// Get file icon based on content type
+function getFileIcon(contentType) {
+    if (contentType.startsWith('image/')) return '🖼️';
+    if (contentType.startsWith('video/')) return '🎥';
+    if (contentType.startsWith('audio/')) return '🎵';
+    if (contentType.includes('pdf')) return '📄';
+    if (contentType.includes('zip') || contentType.includes('compressed')) return '📦';
+    if (contentType.includes('text/')) return '📝';
+    if (contentType.includes('word') || contentType.includes('document')) return '📃';
+    if (contentType.includes('sheet') || contentType.includes('excel')) return '📊';
+    if (contentType.includes('presentation') || contentType.includes('powerpoint')) return '📽️';
+    return '📎';
+}
+
+// Format file size
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 }
 

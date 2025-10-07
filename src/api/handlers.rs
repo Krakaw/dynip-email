@@ -38,7 +38,7 @@ pub async fn get_emails_for_address(
     let normalized_address = config.normalize_address(&address);
     
     match storage.get_emails_for_address(&normalized_address).await {
-        Ok(emails) => Ok(Json(json!(emails))),
+        Ok(emails) => Ok(Json(json!({ "emails": emails }))),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to fetch emails: {}", e),

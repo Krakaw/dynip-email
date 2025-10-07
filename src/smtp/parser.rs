@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
-use mail_parser::MessageParser;
+use mail_parser::{MessageParser, MimeHeaders};
 
-use crate::storage::models::Email;
+use crate::storage::models::{Attachment, Email};
 
 /// Parse raw email data into an Email struct
 pub fn parse_email(raw_email: &[u8], fallback_recipient: &str) -> Result<Email> {
@@ -41,6 +41,32 @@ pub fn parse_email(raw_email: &[u8], fallback_recipient: &str) -> Result<Email> 
         "(No body)".to_string()
     };
     
+    // Extract attachments
+    let mut attachments = Vec::new();
+    for attachment in message.attachments() {
+        let body = attachment.contents();
+        
+        let content_type = attachment
+            .content_type()
+            .map(|ct| ct.ctype().to_string())
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+        
+        let filename = attachment
+            .attachment_name()
+            .unwrap_or("attachment")
+            .to_string();
+        
+        // Base64 encode the content for storage
+        let content = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, body);
+        
+        attachments.push(Attachment {
+            filename,
+            content_type,
+            size: body.len(),
+            content,
+        });
+    }
+    
     // Store raw email
     let raw = String::from_utf8_lossy(raw_email).to_string();
     
@@ -50,6 +76,7 @@ pub fn parse_email(raw_email: &[u8], fallback_recipient: &str) -> Result<Email> 
         subject,
         body,
         Some(raw),
+        attachments,
     ))
 }
 
