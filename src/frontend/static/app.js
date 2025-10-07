@@ -23,7 +23,7 @@ async function loadInbox() {
     const address = emailAddressInput.value.trim();
     
     if (!address) {
-        alert('Please enter an email address');
+        alert('Please enter an address');
         return;
     }
     

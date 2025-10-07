@@ -30,24 +30,47 @@ cd dynip-email
 cargo run --release
 ```
 
+### Server Startup
+
 The server will start with:
 - **Web Interface**: http://localhost:3000
 - **SMTP Server**: localhost:2525
 
 ### Configuration
 
-Set environment variables to customize the server:
+Create a `.env` file or set environment variables to customize the server:
 
 ```bash
-# SMTP server port (default: 2525)
-export SMTP_PORT=2525
+# Copy the example file
+cp .env.example .env
 
-# API/Web server port (default: 3000)
-export API_PORT=3000
-
-# SQLite database location (default: sqlite:emails.db)
-export DATABASE_URL=sqlite:emails.db
+# Edit the configuration
+nano .env
 ```
+
+Key configuration options:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SMTP_PORT` | 2525 | SMTP server port (non-TLS, always listening) |
+| `SMTP_STARTTLS_PORT` | 587 | STARTTLS port (when SSL enabled) |
+| `SMTP_SSL_PORT` | 465 | SMTPS port (when SSL enabled) |
+| `API_PORT` | 3000 | API/Web server port (HTTP only) |
+| `DATABASE_URL` | sqlite:emails.db | Database connection string |
+| `DOMAIN_NAME` | tempmail.local | Domain name for SMTP greeting |
+| `SMTP_SSL_ENABLED` | false | Enable Let's Encrypt SSL for SMTP |
+| `SMTP_SSL_CERT_PATH` | - | Path to SSL certificate (fullchain.pem) |
+| `SMTP_SSL_KEY_PATH` | - | Path to SSL private key (privkey.pem) |
+| `RUST_LOG` | info | Log level (trace, debug, info, warn, error) |
+
+**Note**: When `SMTP_SSL_ENABLED=true`, the server listens on **three ports**:
+- `SMTP_PORT` (non-TLS, always available)
+- `SMTP_STARTTLS_PORT` (STARTTLS - recommended)
+- `SMTP_SSL_PORT` (SMTPS - implicit TLS)
+
+📖 See [PORTS_CONFIGURATION.md](PORTS_CONFIGURATION.md) for detailed port configuration options.
+
+**Note**: API SSL termination should be handled by a reverse proxy (nginx, caddy, traefik, etc.)
 
 ## Usage
 

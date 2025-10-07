@@ -15,6 +15,22 @@ use crate::storage::models::Email;
 #[derive(Clone)]
 pub struct WsState {
     pub email_receiver: broadcast::Sender<Email>,
+    pub domain_name: String,
+}
+
+impl WsState {
+    /// Normalize an email address by appending domain if not present
+    fn normalize_address(&self, input: &str) -> String {
+        let input = input.trim();
+        
+        // If it already contains @, use as-is
+        if input.contains('@') {
+            input.to_string()
+        } else {
+            // Append the server domain
+            format!("{}@{}", input, self.domain_name)
+        }
+    }
 }
 
 /// Handle WebSocket upgrade for a specific email address
@@ -23,8 +39,10 @@ pub async fn websocket_handler(
     Path(address): Path<String>,
     State(state): State<WsState>,
 ) -> Response {
-    info!("WebSocket connection requested for address: {}", address);
-    ws.on_upgrade(move |socket| handle_socket(socket, address, state))
+    // Normalize the address (append domain if not present)
+    let normalized_address = state.normalize_address(&address);
+    info!("WebSocket connection requested for address: {} (normalized: {})", address, normalized_address);
+    ws.on_upgrade(move |socket| handle_socket(socket, normalized_address, state))
 }
 
 /// Handle individual WebSocket connections

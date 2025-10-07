@@ -8,17 +8,37 @@ use serde_json::{json, Value};
 use crate::storage::StorageBackend;
 use std::sync::Arc;
 
+/// Shared application configuration
+#[derive(Clone)]
+pub struct AppConfig {
+    pub domain_name: String,
+}
+
+impl AppConfig {
+    /// Normalize an email address by appending domain if not present
+    pub fn normalize_address(&self, input: &str) -> String {
+        let input = input.trim();
+        
+        // If it already contains @, use as-is
+        if input.contains('@') {
+            input.to_string()
+        } else {
+            // Append the server domain
+            format!("{}@{}", input, self.domain_name)
+        }
+    }
+}
+
 /// Get all emails for a specific address
 pub async fn get_emails_for_address(
     Path(address): Path<String>,
-    State(storage): State<Arc<dyn StorageBackend>>,
+    State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    match storage.get_emails_for_address(&address).await {
-        Ok(emails) => Ok(Json(json!({
-            "address": address,
-            "count": emails.len(),
-            "emails": emails
-        }))),
+    // Normalize the address (append domain if not present)
+    let normalized_address = config.normalize_address(&address);
+    
+    match storage.get_emails_for_address(&normalized_address).await {
+        Ok(emails) => Ok(Json(json!(emails))),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to fetch emails: {}", e),

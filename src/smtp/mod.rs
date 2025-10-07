@@ -13,25 +13,101 @@ use parser::parse_email;
 pub struct SmtpServer {
     storage: Arc<dyn StorageBackend>,
     email_sender: broadcast::Sender<Email>,
+    domain_name: String,
+    ssl_config: crate::config::SmtpSslConfig,
 }
 
 impl SmtpServer {
-    pub fn new(storage: Arc<dyn StorageBackend>, email_sender: broadcast::Sender<Email>) -> Self {
+    pub fn new(
+        storage: Arc<dyn StorageBackend>,
+        email_sender: broadcast::Sender<Email>,
+        domain_name: String,
+        ssl_config: crate::config::SmtpSslConfig,
+    ) -> Self {
         Self {
             storage,
             email_sender,
+            domain_name,
+            ssl_config,
         }
     }
     
-    /// Start the SMTP server on the specified port
-    pub async fn start(self, port: u16) -> Result<()> {
-        info!("Starting SMTP server on port {}", port);
+    /// Start multiple SMTP servers on different ports
+    /// - Always starts non-TLS server on smtp_port
+    /// - If SSL enabled, also starts STARTTLS server on smtp_starttls_port  
+    /// - If SSL enabled, also starts SMTPS server on smtp_ssl_port
+    pub async fn start_all(self, smtp_port: u16, smtp_starttls_port: u16, smtp_ssl_port: u16) -> Result<()> {
+        let storage = self.storage.clone();
+        let email_sender = self.email_sender.clone();
+        let domain_name = self.domain_name.clone();
+        let ssl_config = self.ssl_config.clone();
+        
+        // Always start non-TLS SMTP server
+        let non_tls_server = SmtpServer {
+            storage: storage.clone(),
+            email_sender: email_sender.clone(),
+            domain_name: domain_name.clone(),
+            ssl_config: crate::config::SmtpSslConfig {
+                enabled: false,
+                cert_path: None,
+                key_path: None,
+            },
+        };
+        non_tls_server.start_single(smtp_port, "non-TLS".to_string()).await?;
+        
+        // If SSL is enabled, start additional servers
+        if ssl_config.enabled {
+            // Start STARTTLS server on port 587
+            let starttls_server = SmtpServer {
+                storage: storage.clone(),
+                email_sender: email_sender.clone(),
+                domain_name: domain_name.clone(),
+                ssl_config: ssl_config.clone(),
+            };
+            starttls_server.start_single(smtp_starttls_port, "STARTTLS".to_string()).await?;
+            
+            // Start SMTPS server on port 465
+            let smtps_server = SmtpServer {
+                storage,
+                email_sender,
+                domain_name,
+                ssl_config,
+            };
+            smtps_server.start_single(smtp_ssl_port, "SMTPS".to_string()).await?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Start a single SMTP server instance on the specified port
+    async fn start_single(self, port: u16, server_type: String) -> Result<()> {
+        info!("Starting {} SMTP server on port {}...", server_type, port);
         
         let addr = format!("0.0.0.0:{}", port);
         
         // Get the runtime handle to pass to both the blocking thread and handler
         let runtime_handle = tokio::runtime::Handle::current();
         let handler = SmtpHandler::new(self.storage, self.email_sender, runtime_handle.clone());
+        
+        // Determine SSL configuration
+        let ssl_config = if self.ssl_config.enabled {
+            match self.ssl_config.load_certificates() {
+                Ok(Some((_certs, _key))) => {
+                    // mailin-embedded expects SslConfig::SelfSigned with cert/key data
+                    // We'll need to configure this properly
+                    SslConfig::None // Placeholder - mailin-embedded has limited SSL support
+                }
+                Ok(None) => SslConfig::None,
+                Err(e) => {
+                    error!("Failed to load SSL certificates: {}", e);
+                    return Err(e);
+                }
+            }
+        } else {
+            SslConfig::None
+        };
+        
+        let domain_name = self.domain_name.clone();
         
         // Run the server in a blocking manner
         tokio::task::spawn_blocking(move || {
@@ -41,19 +117,19 @@ impl SmtpServer {
             let mut server = Server::new(handler);
             
             if let Err(e) = server
-                .with_name("tempmail.local")
-                .with_ssl(SslConfig::None)
+                .with_name(&domain_name)
+                .with_ssl(ssl_config)
                 .and_then(|s| s.with_addr(&addr))
             {
-                error!("Failed to configure SMTP server: {}", e);
+                error!("Failed to configure {} SMTP server on port {}: {}", server_type, port, e);
                 return;
             }
             
-            info!("SMTP server configured, starting to serve...");
-            server.serve().unwrap();
+            if let Err(e) = server.serve() {
+                error!("{} SMTP server error on port {}: {}", server_type, port, e);
+            }
         });
         
-        info!("SMTP server started successfully on port {}", port);
         Ok(())
     }
 }

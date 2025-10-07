@@ -31,7 +31,7 @@ if __name__ == '__main__':
     
     # Send a few test emails
     send_test_email(
-        'test@example.com',
+        'bob@dyn-ip.me',
         'Welcome to Temporary Mail!',
         'This is your first test email. The server is working!'
     )
@@ -39,7 +39,7 @@ if __name__ == '__main__':
     time.sleep(1)
     
     send_test_email(
-        'test@example.com',
+        'bob@dyn-ip.me',
         'Second Test Email',
         'This is another test email to demonstrate real-time updates.'
     )
