@@ -11,15 +11,55 @@ const emailList = document.getElementById('emailList');
 const emailDetail = document.getElementById('emailDetail');
 const connectionStatus = document.getElementById('connectionStatus');
 const emailCount = document.getElementById('emailCount');
+const themeToggle = document.getElementById('themeToggle');
+const themeIcon = document.getElementById('themeIcon');
 
 // Event listeners
 loadEmailsBtn.addEventListener('click', loadInbox);
 emailAddressInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') loadInbox();
 });
+themeToggle.addEventListener('click', toggleTheme);
+
+// Theme management
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+        enableDarkMode();
+    } else {
+        enableLightMode();
+    }
+}
+
+function toggleTheme() {
+    const isDark = document.documentElement.classList.contains('dark-mode');
+    if (isDark) {
+        enableLightMode();
+    } else {
+        enableDarkMode();
+    }
+}
+
+function enableDarkMode() {
+    document.documentElement.classList.add('dark-mode');
+    themeIcon.textContent = '☀️';
+    localStorage.setItem('theme', 'dark');
+}
+
+function enableLightMode() {
+    document.documentElement.classList.remove('dark-mode');
+    themeIcon.textContent = '🌙';
+    localStorage.setItem('theme', 'light');
+}
 
 // Initialize from URL on page load
 window.addEventListener('DOMContentLoaded', () => {
+    // Initialize theme
+    initTheme();
+    
+    // Load mailbox from URL if present
     const urlParams = new URLSearchParams(window.location.search);
     const mailbox = urlParams.get('mailbox');
     
@@ -115,7 +155,7 @@ function showEmailDetail(emailId) {
     const isHtml = email.body.includes('<') && email.body.includes('>');
     const bodyContent = isHtml
         ? `<iframe srcdoc="${escapeHtml(email.body)}"></iframe>`
-        : `<pre style="white-space: pre-wrap; font-family: inherit;">${escapeHtml(email.body)}</pre>`;
+        : `<pre class="email-body-text">${escapeHtml(email.body)}</pre>`;
     
     // Build attachments HTML if any
     let attachmentsHtml = '';

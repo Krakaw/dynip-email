@@ -1,4 +1,4 @@
-# 📧 Temporary Mail Server
+# <img src="src/frontend/static/logo.svg" width="56"  /> Temporary Mail Server
 
 A lightweight, temporary mail server that accepts emails to any address with a modern web interface and real-time updates via WebSocket.
 
