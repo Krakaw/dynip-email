@@ -1,1 +1,29 @@
-/target
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+emails.db

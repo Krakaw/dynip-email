@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temporary Mail Server</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📧 Temporary Mail Server</h1>
+            <p class="subtitle">View emails sent to any address - no registration required</p>
+        </header>
+
+        <div class="email-input-section">
+            <input 
+                type="email" 
+                id="emailAddress" 
+                placeholder="Enter email address (e.g., test@example.com)"
+                autofocus
+            >
+            <button id="loadEmails">Load Inbox</button>
+        </div>
+
+        <div class="status-bar">
+            <div id="connectionStatus" class="status-indicator offline">
+                <span class="status-dot"></span>
+                <span class="status-text">Disconnected</span>
+            </div>
+            <div id="emailCount" class="email-count">0 emails</div>
+        </div>
+
+        <div class="main-content">
+            <div class="email-list-panel">
+                <h2>Inbox</h2>
+                <div id="emailList" class="email-list">
+                    <div class="empty-state">
+                        <p>👋 Enter an email address to view messages</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="email-detail-panel">
+                <div id="emailDetail" class="email-detail">
+                    <div class="empty-state">
+                        <p>📬 Select an email to view its contents</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
+
