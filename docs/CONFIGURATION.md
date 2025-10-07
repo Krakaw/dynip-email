@@ -11,6 +11,11 @@ The server can be configured in two ways:
 
 The server uses [dotenvy](https://github.com/allan2/dotenvy) to automatically load `.env` files.
 
+**Quick Start**: Copy the example configuration file:
+```bash
+cp env.example .env
+```
+
 ## Configuration Options
 
 ### Server Ports

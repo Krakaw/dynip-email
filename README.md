@@ -42,7 +42,7 @@ Create a `.env` file or set environment variables to customize the server:
 
 ```bash
 # Copy the example file
-cp .env.example .env
+cp env.example .env
 
 # Edit the configuration
 nano .env
@@ -67,8 +67,6 @@ Key configuration options:
 - `SMTP_PORT` (non-TLS, always available)
 - `SMTP_STARTTLS_PORT` (STARTTLS - recommended)
 - `SMTP_SSL_PORT` (SMTPS - implicit TLS)
-
-📖 See [PORTS_CONFIGURATION.md](PORTS_CONFIGURATION.md) for detailed port configuration options.
 
 **Note**: API SSL termination should be handled by a reverse proxy (nginx, caddy, traefik, etc.)
 
@@ -209,6 +207,15 @@ swaks --to user@test.com \
       --header "Subject: Test Email" \
       --body "This is a test message"
 ```
+
+## Documentation
+
+For detailed guides and technical documentation, see the `/docs` folder:
+
+- **[Configuration Guide](docs/CONFIGURATION.md)** - Comprehensive reference for all configuration options
+- **[Let's Encrypt Setup](docs/LETSENCRYPT_SETUP.md)** - Step-by-step guide for SSL/TLS configuration
+- **[Port Configuration](docs/PORTS_CONFIGURATION.md)** - Detailed SMTP port configuration options
+- **[Domain Normalization](docs/BACKEND_DOMAIN_NORMALIZATION.md)** - Technical details on address handling
 
 ## Future Enhancements
 
