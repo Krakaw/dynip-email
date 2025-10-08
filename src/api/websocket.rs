@@ -60,7 +60,7 @@ impl WsState {
     /// Normalize an email address by appending domain if not present
     fn normalize_address(&self, input: &str) -> String {
         let input = input.trim();
-        
+
         // If it already contains @, use as-is
         if input.contains('@') {
             input.to_string()
@@ -79,7 +79,10 @@ pub async fn websocket_handler(
 ) -> Response {
     // Normalize the address (append domain if not present)
     let normalized_address = state.normalize_address(&address);
-    info!("WebSocket connection requested for address: {} (normalized: {})", address, normalized_address);
+    info!(
+        "WebSocket connection requested for address: {} (normalized: {})",
+        address, normalized_address
+    );
     ws.on_upgrade(move |socket| handle_socket(socket, normalized_address, state))
 }
 
@@ -88,20 +91,24 @@ async fn handle_socket(socket: WebSocket, address: String, state: WsState) {
     let (mut sender, mut receiver) = socket.split();
     let mut email_rx = state.email_receiver.subscribe();
     let mut deletion_rx = state.deletion_sender.subscribe();
-    
+
     let address_clone = address.clone();
     info!("WebSocket connected for address: {}", address);
-    
+
     // Send initial connection message
-    let connected_msg = WsMessage::Connected { address: address.clone() };
+    let connected_msg = WsMessage::Connected {
+        address: address.clone(),
+    };
     if let Err(e) = sender
-        .send(Message::Text(serde_json::to_string(&connected_msg).unwrap()))
+        .send(Message::Text(
+            serde_json::to_string(&connected_msg).unwrap(),
+        ))
         .await
     {
         error!("Failed to send connection message: {}", e);
         return;
     }
-    
+
     // Spawn a task to handle incoming messages from the client (mostly just pings)
     let address_for_send = address.clone();
     let mut send_task = tokio::spawn(async move {
@@ -120,7 +127,7 @@ async fn handle_socket(socket: WebSocket, address: String, state: WsState) {
                                     continue;
                                 }
                             };
-                            
+
                             if sender.send(Message::Text(json)).await.is_err() {
                                 break;
                             }
@@ -133,9 +140,9 @@ async fn handle_socket(socket: WebSocket, address: String, state: WsState) {
                         info!("📨 Received deletion event for email {} to address {}", email_id, deleted_address);
                         // Only send deletions for this address
                         if deleted_address == address_for_send {
-                            let msg = WsMessage::EmailDeleted { 
-                                id: email_id.clone(), 
-                                address: deleted_address.clone() 
+                            let msg = WsMessage::EmailDeleted {
+                                id: email_id.clone(),
+                                address: deleted_address.clone()
                             };
                             let json = match serde_json::to_string(&msg) {
                                 Ok(json) => {
@@ -147,7 +154,7 @@ async fn handle_socket(socket: WebSocket, address: String, state: WsState) {
                                     continue;
                                 }
                             };
-                            
+
                             if sender.send(Message::Text(json)).await.is_err() {
                                 error!("Failed to send deletion notification to WebSocket");
                                 break;
@@ -162,14 +169,17 @@ async fn handle_socket(socket: WebSocket, address: String, state: WsState) {
             }
         }
     });
-    
+
     // Handle incoming messages (ping/pong, close, etc.)
     let address_for_recv = address_clone.clone();
     let mut recv_task = tokio::spawn(async move {
         while let Some(msg) = receiver.next().await {
             match msg {
                 Ok(Message::Close(_)) => {
-                    info!("WebSocket client disconnected for address: {}", address_for_recv);
+                    info!(
+                        "WebSocket client disconnected for address: {}",
+                        address_for_recv
+                    );
                     break;
                 }
                 Ok(Message::Ping(_)) => {
@@ -190,13 +200,254 @@ async fn handle_socket(socket: WebSocket, address: String, state: WsState) {
             }
         }
     });
-    
+
     // Wait for either task to finish
     tokio::select! {
         _ = &mut send_task => recv_task.abort(),
         _ = &mut recv_task => send_task.abort(),
     }
-    
+
     info!("WebSocket closed for address: {}", address_clone);
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::models::Email;
+    use serde_json::json;
+    use tokio::sync::broadcast;
+
+    fn create_test_ws_state() -> WsState {
+        let (email_tx, _) = broadcast::channel::<Email>(100);
+        let (deletion_tx, _) = broadcast::channel::<(String, String)>(100);
+
+        WsState {
+            email_receiver: email_tx,
+            deletion_sender: deletion_tx,
+            domain_name: "test.local".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_ws_message_from_email() {
+        let email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Test body".to_string(),
+            None,
+            vec![],
+        );
+
+        let ws_message = WsMessage::from(email.clone());
+
+        match ws_message {
+            WsMessage::Email {
+                id,
+                to,
+                from,
+                subject,
+                body,
+                timestamp,
+                raw,
+                attachments,
+            } => {
+                assert_eq!(id, email.id);
+                assert_eq!(to, email.to);
+                assert_eq!(from, email.from);
+                assert_eq!(subject, email.subject);
+                assert_eq!(body, email.body);
+                assert_eq!(raw, email.raw);
+                assert_eq!(attachments.len(), email.attachments.len());
+                assert!(!timestamp.is_empty());
+            }
+            _ => panic!("Expected Email message type"),
+        }
+    }
+
+    #[test]
+    fn test_ws_message_serialization() {
+        let email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Test body".to_string(),
+            None,
+            vec![],
+        );
+
+        let ws_message = WsMessage::from(email);
+        let json = serde_json::to_string(&ws_message).unwrap();
+
+        assert!(json.contains("Test Subject"));
+        assert!(json.contains("test@test.local"));
+        assert!(json.contains("sender@example.com"));
+    }
+
+    #[test]
+    fn test_ws_message_deserialization() {
+        let json = json!({
+            "type": "Email",
+            "id": "test-id",
+            "to": "test@test.local",
+            "from": "sender@example.com",
+            "subject": "Test Subject",
+            "body": "Test body",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "raw": null,
+            "attachments": []
+        });
+
+        let ws_message: WsMessage = serde_json::from_value(json).unwrap();
+
+        match ws_message {
+            WsMessage::Email {
+                id,
+                to,
+                from,
+                subject,
+                body,
+                raw,
+                attachments,
+                ..
+            } => {
+                assert_eq!(id, "test-id");
+                assert_eq!(to, "test@test.local");
+                assert_eq!(from, "sender@example.com");
+                assert_eq!(subject, "Test Subject");
+                assert_eq!(body, "Test body");
+                assert_eq!(raw, None);
+                assert!(attachments.is_empty());
+            }
+            _ => panic!("Expected Email message type"),
+        }
+    }
+
+    #[test]
+    fn test_ws_message_email_deleted() {
+        let json = json!({
+            "type": "EmailDeleted",
+            "id": "test-id",
+            "address": "test@test.local"
+        });
+
+        let ws_message: WsMessage = serde_json::from_value(json).unwrap();
+
+        match ws_message {
+            WsMessage::EmailDeleted { id, address } => {
+                assert_eq!(id, "test-id");
+                assert_eq!(address, "test@test.local");
+            }
+            _ => panic!("Expected EmailDeleted message type"),
+        }
+    }
+
+    #[test]
+    fn test_ws_message_connected() {
+        let json = json!({
+            "type": "Connected",
+            "address": "test@test.local"
+        });
+
+        let ws_message: WsMessage = serde_json::from_value(json).unwrap();
+
+        match ws_message {
+            WsMessage::Connected { address } => {
+                assert_eq!(address, "test@test.local");
+            }
+            _ => panic!("Expected Connected message type"),
+        }
+    }
+
+    #[test]
+    fn test_ws_state_normalize_address() {
+        let state = create_test_ws_state();
+
+        // Test normalization of address without @
+        assert_eq!(state.normalize_address("user"), "user@test.local");
+
+        // Test address with @ should remain unchanged
+        assert_eq!(
+            state.normalize_address("user@example.com"),
+            "user@example.com"
+        );
+
+        // Test address with @ and domain should remain unchanged
+        assert_eq!(
+            state.normalize_address("user@test.local"),
+            "user@test.local"
+        );
+
+        // Test trimming whitespace
+        assert_eq!(state.normalize_address("  user  "), "user@test.local");
+
+        // Test empty string
+        assert_eq!(state.normalize_address(""), "@test.local");
+    }
+
+    #[test]
+    fn test_ws_message_with_attachments() {
+        let mut email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Test body".to_string(),
+            None,
+            vec![],
+        );
+
+        email.attachments.push(crate::storage::models::Attachment {
+            filename: "test.txt".to_string(),
+            content_type: "text/plain".to_string(),
+            size: 100,
+            content: "dGVzdCBjb250ZW50".to_string(),
+        });
+
+        let ws_message = WsMessage::from(email);
+        let json = serde_json::to_string(&ws_message).unwrap();
+
+        assert!(json.contains("test.txt"));
+        assert!(json.contains("text/plain"));
+        assert!(json.contains("dGVzdCBjb250ZW50"));
+    }
+
+    #[test]
+    fn test_ws_message_with_raw_content() {
+        let email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Test body".to_string(),
+            Some("Raw email content".to_string()),
+            vec![],
+        );
+
+        let ws_message = WsMessage::from(email);
+        let json = serde_json::to_string(&ws_message).unwrap();
+
+        assert!(json.contains("Raw email content"));
+    }
+
+    #[test]
+    fn test_ws_message_timestamp_format() {
+        let email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Test body".to_string(),
+            None,
+            vec![],
+        );
+
+        let ws_message = WsMessage::from(email);
+        let json = serde_json::to_string(&ws_message).unwrap();
+
+        // Check that timestamp is in RFC3339 format
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let timestamp = parsed["timestamp"].as_str().unwrap();
+
+        // Should be a valid RFC3339 timestamp
+        assert!(timestamp.contains("T"));
+        assert!(timestamp.contains("Z") || timestamp.contains("+") || timestamp.contains("-"));
+    }
+}
