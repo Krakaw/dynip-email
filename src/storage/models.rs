@@ -7,13 +7,13 @@ use uuid::Uuid;
 pub struct Attachment {
     /// Filename of the attachment
     pub filename: String,
-    
+
     /// MIME type of the attachment
     pub content_type: String,
-    
+
     /// Size of the attachment in bytes
     pub size: usize,
-    
+
     /// Base64-encoded content of the attachment
     pub content: String,
 }
@@ -23,26 +23,26 @@ pub struct Attachment {
 pub struct Email {
     /// Unique identifier for the email
     pub id: String,
-    
+
     /// Recipient email address
     pub to: String,
-    
+
     /// Sender email address
     pub from: String,
-    
+
     /// Email subject
     pub subject: String,
-    
+
     /// Email body (can be text or HTML)
     pub body: String,
-    
+
     /// Timestamp when email was received
     pub timestamp: DateTime<Utc>,
-    
+
     /// Optional raw email data
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw: Option<String>,
-    
+
     /// Attachments
     #[serde(default)]
     pub attachments: Vec<Attachment>,
@@ -50,7 +50,14 @@ pub struct Email {
 
 impl Email {
     /// Create a new email with generated UUID
-    pub fn new(to: String, from: String, subject: String, body: String, raw: Option<String>, attachments: Vec<Attachment>) -> Self {
+    pub fn new(
+        to: String,
+        from: String,
+        subject: String,
+        body: String,
+        raw: Option<String>,
+        attachments: Vec<Attachment>,
+    ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             to,
@@ -77,7 +84,7 @@ mod tests {
             size: 100,
             content: "dGVzdCBjb250ZW50".to_string(), // base64 encoded "test content"
         };
-        
+
         assert_eq!(attachment.filename, "test.txt");
         assert_eq!(attachment.content_type, "text/plain");
         assert_eq!(attachment.size, 100);
@@ -86,15 +93,13 @@ mod tests {
 
     #[test]
     fn test_email_creation() {
-        let attachments = vec![
-            Attachment {
-                filename: "test.txt".to_string(),
-                content_type: "text/plain".to_string(),
-                size: 100,
-                content: "dGVzdCBjb250ZW50".to_string(),
-            }
-        ];
-        
+        let attachments = vec![Attachment {
+            filename: "test.txt".to_string(),
+            content_type: "text/plain".to_string(),
+            size: 100,
+            content: "dGVzdCBjb250ZW50".to_string(),
+        }];
+
         let email = Email::new(
             "test@example.com".to_string(),
             "sender@example.com".to_string(),
@@ -103,18 +108,18 @@ mod tests {
             Some("raw email content".to_string()),
             attachments.clone(),
         );
-        
+
         assert_eq!(email.to, "test@example.com");
         assert_eq!(email.from, "sender@example.com");
         assert_eq!(email.subject, "Test Subject");
         assert_eq!(email.body, "Test body content");
         assert_eq!(email.raw, Some("raw email content".to_string()));
         assert_eq!(email.attachments, attachments);
-        
+
         // Check that ID is generated (UUID format)
         assert!(!email.id.is_empty());
         assert!(email.id.len() > 10);
-        
+
         // Check that timestamp is recent
         let now = Utc::now();
         let diff = now.signed_duration_since(email.timestamp);
@@ -131,7 +136,7 @@ mod tests {
             None,
             vec![],
         );
-        
+
         assert_eq!(email.raw, None);
         assert!(email.attachments.is_empty());
     }
@@ -150,9 +155,9 @@ mod tests {
                 content_type: "application/pdf".to_string(),
                 size: 200,
                 content: "cGRmIGNvbnRlbnQ=".to_string(),
-            }
+            },
         ];
-        
+
         let email = Email::new(
             "test@example.com".to_string(),
             "sender@example.com".to_string(),
@@ -161,7 +166,7 @@ mod tests {
             None,
             attachments.clone(),
         );
-        
+
         assert_eq!(email.attachments.len(), 2);
         assert_eq!(email.attachments[0].filename, "file1.txt");
         assert_eq!(email.attachments[1].filename, "file2.pdf");
@@ -177,12 +182,12 @@ mod tests {
             Some("raw email content".to_string()),
             vec![],
         );
-        
+
         // Test JSON serialization
         let json = serde_json::to_string(&email).unwrap();
         assert!(json.contains("test@example.com"));
         assert!(json.contains("Test Subject"));
-        
+
         // Test JSON deserialization
         let deserialized: Email = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.to, email.to);
@@ -201,12 +206,12 @@ mod tests {
             size: 100,
             content: "dGVzdCBjb250ZW50".to_string(),
         };
-        
+
         // Test JSON serialization
         let json = serde_json::to_string(&attachment).unwrap();
         assert!(json.contains("test.txt"));
         assert!(json.contains("text/plain"));
-        
+
         // Test JSON deserialization
         let deserialized: Attachment = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.filename, attachment.filename);
@@ -215,4 +220,3 @@ mod tests {
         assert_eq!(deserialized.content, attachment.content);
     }
 }
-

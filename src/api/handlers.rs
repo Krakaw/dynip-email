@@ -18,7 +18,7 @@ impl AppConfig {
     /// Normalize an email address by appending domain if not present
     pub fn normalize_address(&self, input: &str) -> String {
         let input = input.trim();
-        
+
         // If it already contains @, use as-is
         if input.contains('@') {
             input.to_string()
@@ -36,7 +36,7 @@ pub async fn get_emails_for_address(
 ) -> Result<Json<Value>, (StatusCode, String)> {
     // Normalize the address (append domain if not present)
     let normalized_address = config.normalize_address(&address);
-    
+
     match storage.get_emails_for_address(&normalized_address).await {
         Ok(emails) => Ok(Json(json!({ "emails": emails }))),
         Err(e) => Err((
@@ -70,19 +70,22 @@ mod tests {
         let config = AppConfig {
             domain_name: "example.com".to_string(),
         };
-        
+
         // Test normalization of address without @
         assert_eq!(config.normalize_address("user"), "user@example.com");
-        
+
         // Test address with @ should remain unchanged
         assert_eq!(config.normalize_address("user@test.com"), "user@test.com");
-        
+
         // Test address with @ and domain should remain unchanged
-        assert_eq!(config.normalize_address("user@example.com"), "user@example.com");
-        
+        assert_eq!(
+            config.normalize_address("user@example.com"),
+            "user@example.com"
+        );
+
         // Test trimming whitespace
         assert_eq!(config.normalize_address("  user  "), "user@example.com");
-        
+
         // Test empty string
         assert_eq!(config.normalize_address(""), "@example.com");
     }
@@ -92,11 +95,17 @@ mod tests {
         let config = AppConfig {
             domain_name: "test.local".to_string(),
         };
-        
+
         // Test normalization with different domain
         assert_eq!(config.normalize_address("user"), "user@test.local");
-        assert_eq!(config.normalize_address("user@example.com"), "user@example.com");
-        assert_eq!(config.normalize_address("user@test.local"), "user@test.local");
+        assert_eq!(
+            config.normalize_address("user@example.com"),
+            "user@example.com"
+        );
+        assert_eq!(
+            config.normalize_address("user@test.local"),
+            "user@test.local"
+        );
     }
 
     #[test]
@@ -104,18 +113,17 @@ mod tests {
         let config = AppConfig {
             domain_name: "example.com".to_string(),
         };
-        
+
         // Test with @ in the middle
         assert_eq!(config.normalize_address("user@domain"), "user@domain");
-        
+
         // Test with multiple @ symbols
         assert_eq!(config.normalize_address("user@@domain"), "user@@domain");
-        
+
         // Test with just @
         assert_eq!(config.normalize_address("@"), "@");
-        
+
         // Test with domain only
         assert_eq!(config.normalize_address("@example.com"), "@example.com");
     }
 }
-
