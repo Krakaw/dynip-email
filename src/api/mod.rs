@@ -44,7 +44,7 @@ pub fn create_router(
         .route("/api/email/:id", get(get_email_by_id))
         .with_state(storage)
         // Serve static files
-        .nest_service("/", ServeDir::new("src/frontend/static"))
+        .nest_service("/", ServeDir::new("static"))
         // CORS for development
         .layer(
             CorsLayer::new()

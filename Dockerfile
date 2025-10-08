@@ -1,5 +1,5 @@
 # Multi-stage build for dynip-email
-FROM rust:1.90-slim as builder
+FROM rust:1.90-slim AS builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -21,12 +21,13 @@ RUN cargo build --release && rm -rf src
 
 # Copy source code
 COPY src ./src
+COPY static ./static
 
 # Build the actual application
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -44,7 +45,7 @@ WORKDIR /app
 COPY --from=builder /app/target/release/dynip-email /app/dynip-email
 
 # Copy static files
-COPY --from=builder /app/src/frontend/static /app/static
+COPY --from=builder /app/static /app/static
 
 # Create data directory for database
 RUN mkdir -p /app/data && chown -R dynip-email:dynip-email /app
@@ -56,7 +57,7 @@ USER dynip-email
 EXPOSE 3000 2525 587 465
 
 # Set environment variables
-ENV RUST_LOG=info
+ENV RUST_LOG=debug
 ENV SMTP_PORT=2525
 ENV API_PORT=3000
 ENV DATABASE_URL=sqlite:/app/data/emails.db

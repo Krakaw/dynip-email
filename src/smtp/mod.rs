@@ -76,6 +76,9 @@ impl SmtpServer {
             smtps_server.start_single(smtp_ssl_port, "SMTPS".to_string()).await?;
         }
         
+        // Give servers a moment to start up
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        
         Ok(())
     }
     
@@ -124,6 +127,8 @@ impl SmtpServer {
                 error!("Failed to configure {} SMTP server on port {}: {}", server_type, port, e);
                 return;
             }
+            
+            info!("{} SMTP server configured successfully on port {}", server_type, port);
             
             if let Err(e) = server.serve() {
                 error!("{} SMTP server error on port {}: {}", server_type, port, e);

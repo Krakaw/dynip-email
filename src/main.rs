@@ -7,13 +7,15 @@ use anyhow::Result;
 use config::Config;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::info;
+use tracing::{info, error};
 use tracing_subscriber::EnvFilter;
 
 use storage::{models::Email, sqlite::SqliteBackend, StorageBackend};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    println!("Starting Temporary Mail Server");
+    
     // Initialize tracing with env filter
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -22,10 +24,14 @@ async fn main() -> Result<()> {
         )
         .init();
     
+    println!("Tracing initialized");
+    
     info!("🚀 Starting Temporary Mail Server");
     
     // Load configuration from .env and environment
+    println!("Loading configuration...");
     let config = Config::from_env()?;
+    println!("Configuration loaded successfully");
     
     info!("📝 Configuration:");
     info!("  SMTP Port (non-TLS): {}", config.smtp_port);
@@ -56,17 +62,25 @@ async fn main() -> Result<()> {
         config.domain_name.clone(),
         config.smtp_ssl.clone(),
     );
-    smtp_server.start_all(
+    
+    // Start SMTP servers and wait for them to be ready
+    match smtp_server.start_all(
         config.smtp_port,           // Non-TLS port (always listening)
         config.smtp_starttls_port,  // STARTTLS port (if SSL enabled)
         config.smtp_ssl_port,       // SMTPS port (if SSL enabled)
-    ).await?;
-    
-    if config.smtp_ssl.enabled {
-        info!("✅ SMTP servers started on ports: {} (non-TLS), {} (STARTTLS), {} (SMTPS)", 
-              config.smtp_port, config.smtp_starttls_port, config.smtp_ssl_port);
-    } else {
-        info!("✅ SMTP server started on port {} (non-TLS only)", config.smtp_port);
+    ).await {
+        Ok(_) => {
+            if config.smtp_ssl.enabled {
+                info!("✅ SMTP servers started on ports: {} (non-TLS), {} (STARTTLS), {} (SMTPS)", 
+                      config.smtp_port, config.smtp_starttls_port, config.smtp_ssl_port);
+            } else {
+                info!("✅ SMTP server started on port {} (non-TLS only)", config.smtp_port);
+            }
+        }
+        Err(e) => {
+            error!("❌ Failed to start SMTP servers: {}", e);
+            return Err(e);
+        }
     }
     
     // Create API router
@@ -87,7 +101,16 @@ async fn main() -> Result<()> {
     }
     info!("💡 Tip: Use a reverse proxy (nginx/caddy) for HTTPS on the web interface");
     
-    api::start_server(router, config.api_port).await?;
+    // Start API server and handle any startup errors
+    match api::start_server(router, config.api_port).await {
+        Ok(_) => {
+            info!("✅ API server started successfully");
+        }
+        Err(e) => {
+            error!("❌ Failed to start API server: {}", e);
+            return Err(e);
+        }
+    }
     
     Ok(())
 }
