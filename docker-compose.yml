@@ -1,0 +1,49 @@
+services:
+  dynip-email:
+    build: .
+    container_name: dynip-email
+    restart: unless-stopped
+    ports:
+      # Web interface
+      - "3000:3000"
+      # SMTP ports
+      - "2525:2525"  # Non-TLS SMTP
+      - "587:587"    # STARTTLS (if SSL enabled)
+      - "465:465"    # SMTPS (if SSL enabled)
+    volumes:
+      # Persistent database storage
+      - ./data:/app/data
+      # Optional: Mount SSL certificates for production
+      # - ./certs:/app/certs:ro
+    env_file:
+      - .env
+    environment:
+      # Basic configuration
+      - RUST_LOG=info
+      - SMTP_PORT=2525
+      - API_PORT=3000
+      - DATABASE_URL=sqlite:/app/data/emails.db
+      - DOMAIN_NAME=tempmail.local
+      
+      # SSL/TLS configuration (disabled by default)
+      - SMTP_SSL_ENABLED=false
+      # Uncomment and configure for production with SSL:
+      # - SMTP_SSL_ENABLED=true
+      # - SMTP_SSL_CERT_PATH=/app/certs/fullchain.pem
+      # - SMTP_SSL_KEY_PATH=/app/certs/privkey.pem
+      
+      # Email retention (optional)
+      # - EMAIL_RETENTION_HOURS=72
+    networks:
+      - dynip-email-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/emails/health@test.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+
+networks:
+  dynip-email-network:
+    driver: bridge
