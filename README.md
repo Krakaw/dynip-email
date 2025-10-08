@@ -73,6 +73,107 @@ Key configuration options:
 
 **Note**: API SSL termination should be handled by a reverse proxy (nginx, caddy, traefik, etc.)
 
+## DNS Configuration for Email Delivery
+
+To receive emails from external senders, you need to configure DNS records for your domain. Here are the essential DNS records required:
+
+### Required DNS Records
+
+#### 1. **MX Record (Mail Exchange)**
+```
+Type: MX
+Name: @ (or your domain)
+Value: mail.yourdomain.com
+Priority: 10
+TTL: 3600
+```
+
+#### 2. **A Record for Mail Server**
+```
+Type: A
+Name: mail.yourdomain.com
+Value: YOUR_SERVER_IP_ADDRESS
+TTL: 3600
+```
+
+#### 3. **PTR Record (Reverse DNS)**
+```
+Type: PTR
+Name: YOUR_SERVER_IP_ADDRESS (in reverse)
+Value: mail.yourdomain.com
+```
+**Note**: PTR records are typically set up with your hosting provider or VPS provider.
+
+### Recommended DNS Records
+
+#### 4. **SPF Record (Sender Policy Framework)**
+```
+Type: TXT
+Name: @
+Value: v=spf1 a mx ~all
+TTL: 3600
+```
+
+#### 5. **DKIM Record (DomainKeys Identified Mail)** *(Optional)*
+```
+Type: TXT
+Name: default._domainkey
+Value: v=DKIM1; k=rsa; p=YOUR_PUBLIC_KEY
+TTL: 3600
+```
+**Note**: DKIM is only needed if you plan to send emails from this server. For a receiving-only mail server, this record is optional.
+
+#### 6. **DMARC Record (Domain-based Message Authentication)**
+```
+Type: TXT
+Name: _dmarc
+Value: v=DMARC1; p=quarantine; rua=mailto:dmarc@yourdomain.com
+TTL: 3600
+```
+
+### Testing DNS Configuration
+
+Test your DNS records using these commands:
+
+```bash
+# Test MX record
+dig MX yourdomain.com
+
+# Test A record
+dig A mail.yourdomain.com
+
+# Test PTR record
+dig -x YOUR_SERVER_IP
+
+# Test SPF record
+dig TXT yourdomain.com
+```
+
+### Production Configuration
+
+For production deployment, update your `.env` file:
+
+```env
+# Set your domain name
+DOMAIN_NAME=mail.yourdomain.com
+
+# Enable SSL/TLS for better deliverability
+SMTP_SSL_ENABLED=true
+SMTP_SSL_CERT_PATH=/etc/letsencrypt/live/mail.yourdomain.com/fullchain.pem
+SMTP_SSL_KEY_PATH=/etc/letsencrypt/live/mail.yourdomain.com/privkey.pem
+
+# Use standard SMTP ports
+SMTP_PORT=25
+SMTP_STARTTLS_PORT=587
+SMTP_SSL_PORT=465
+```
+
+### Important Notes
+
+- **Port 25**: Most ISPs block port 25 for residential connections. You may need a VPS or dedicated server.
+- **Firewall**: Ensure your server's firewall allows connections on ports 25, 587, and 465.
+- **Email Reputation**: New mail servers may face deliverability issues initially.
+
 ## Usage
 
 ### Web Interface
