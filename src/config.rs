@@ -137,3 +137,166 @@ impl SmtpSslConfig {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    
+    fn clear_all_env_vars() {
+        env::remove_var("SMTP_PORT");
+        env::remove_var("SMTP_STARTTLS_PORT");
+        env::remove_var("SMTP_SSL_PORT");
+        env::remove_var("API_PORT");
+        env::remove_var("DATABASE_URL");
+        env::remove_var("DOMAIN_NAME");
+        env::remove_var("EMAIL_RETENTION_HOURS");
+        env::remove_var("REJECT_NON_DOMAIN_EMAILS");
+        env::remove_var("SMTP_SSL_ENABLED");
+        env::remove_var("SMTP_SSL_CERT_PATH");
+        env::remove_var("SMTP_SSL_KEY_PATH");
+    }
+
+    #[test]
+    fn test_config_from_env_defaults() {
+        clear_all_env_vars();
+        let config = Config::from_env().unwrap();
+        
+        assert_eq!(config.smtp_port, 2525);
+        assert_eq!(config.smtp_starttls_port, 587);
+        assert_eq!(config.smtp_ssl_port, 465);
+        assert_eq!(config.api_port, 3000);
+        assert_eq!(config.database_url, "sqlite:emails.db");
+        assert_eq!(config.domain_name, "tempmail.local");
+        assert_eq!(config.email_retention_hours, None);
+        assert_eq!(config.reject_non_domain_emails, false);
+        assert_eq!(config.smtp_ssl.enabled, false);
+    }
+
+    #[test]
+    fn test_config_from_env_custom() {
+        clear_all_env_vars();
+        env::set_var("SMTP_PORT", "2526");
+        env::set_var("SMTP_STARTTLS_PORT", "588");
+        env::set_var("SMTP_SSL_PORT", "466");
+        env::set_var("API_PORT", "3001");
+        env::set_var("DATABASE_URL", "sqlite:test.db");
+        env::set_var("DOMAIN_NAME", "test.local");
+        env::set_var("EMAIL_RETENTION_HOURS", "24");
+        env::set_var("REJECT_NON_DOMAIN_EMAILS", "true");
+        env::set_var("SMTP_SSL_ENABLED", "true");
+        env::set_var("SMTP_SSL_CERT_PATH", "/path/to/cert.pem");
+        env::set_var("SMTP_SSL_KEY_PATH", "/path/to/key.pem");
+
+        let config = Config::from_env().unwrap();
+        
+        assert_eq!(config.smtp_port, 2526);
+        assert_eq!(config.smtp_starttls_port, 588);
+        assert_eq!(config.smtp_ssl_port, 466);
+        assert_eq!(config.api_port, 3001);
+        assert_eq!(config.database_url, "sqlite:test.db");
+        assert_eq!(config.domain_name, "test.local");
+        assert_eq!(config.email_retention_hours, Some(24));
+        assert_eq!(config.reject_non_domain_emails, true);
+        assert_eq!(config.smtp_ssl.enabled, true);
+        assert_eq!(config.smtp_ssl.cert_path, Some(std::path::PathBuf::from("/path/to/cert.pem")));
+        assert_eq!(config.smtp_ssl.key_path, Some(std::path::PathBuf::from("/path/to/key.pem")));
+    }
+
+    #[test]
+    fn test_config_ssl_enabled_without_cert_paths() {
+        clear_all_env_vars();
+        env::set_var("SMTP_SSL_ENABLED", "true");
+        env::remove_var("SMTP_SSL_CERT_PATH");
+        env::remove_var("SMTP_SSL_KEY_PATH");
+
+        let result = Config::from_env();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("SMTP_SSL_CERT_PATH and SMTP_SSL_KEY_PATH must be set"));
+    }
+
+    #[test]
+    fn test_config_invalid_port() {
+        clear_all_env_vars();
+        env::set_var("SMTP_PORT", "invalid");
+        
+        let result = Config::from_env();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_invalid_retention_hours() {
+        clear_all_env_vars();
+        env::set_var("EMAIL_RETENTION_HOURS", "invalid");
+        
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.email_retention_hours, None);
+    }
+
+    #[test]
+    fn test_config_invalid_reject_non_domain_emails() {
+        clear_all_env_vars();
+        env::set_var("REJECT_NON_DOMAIN_EMAILS", "invalid");
+        
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.reject_non_domain_emails, false);
+    }
+
+    #[test]
+    fn test_smtp_ssl_config_disabled() {
+        let ssl_config = SmtpSslConfig {
+            enabled: false,
+            cert_path: None,
+            key_path: None,
+        };
+        
+        let result = ssl_config.load_certificates().unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_smtp_ssl_config_enabled_without_paths() {
+        let ssl_config = SmtpSslConfig {
+            enabled: true,
+            cert_path: None,
+            key_path: None,
+        };
+        
+        let result = ssl_config.load_certificates();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Certificate path not set"));
+    }
+
+    #[test]
+    fn test_smtp_ssl_config_enabled_with_nonexistent_files() {
+        let ssl_config = SmtpSslConfig {
+            enabled: true,
+            cert_path: Some(std::path::PathBuf::from("/nonexistent/cert.pem")),
+            key_path: Some(std::path::PathBuf::from("/nonexistent/key.pem")),
+        };
+        
+        let result = ssl_config.load_certificates();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_smtp_ssl_config_with_valid_files() {
+        let temp_dir = std::env::temp_dir();
+        let cert_path = temp_dir.join("cert.pem");
+        let key_path = temp_dir.join("key.pem");
+        
+        // Create dummy certificate and key files
+        std::fs::write(&cert_path, "-----BEGIN CERTIFICATE-----\nMOCK_CERT\n-----END CERTIFICATE-----").unwrap();
+        std::fs::write(&key_path, "-----BEGIN PRIVATE KEY-----\nMOCK_KEY\n-----END PRIVATE KEY-----").unwrap();
+        
+        let ssl_config = SmtpSslConfig {
+            enabled: true,
+            cert_path: Some(cert_path),
+            key_path: Some(key_path),
+        };
+        
+        // This will fail because the files don't contain valid PEM data, but we can test the path logic
+        let result = ssl_config.load_certificates();
+        assert!(result.is_err()); // Expected to fail due to invalid PEM content
+    }
+}
+

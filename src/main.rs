@@ -159,3 +159,232 @@ async fn main() -> Result<()> {
     info!("🔄 Exiting application...");
     std::process::exit(0);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::storage::{models::Email, sqlite::SqliteBackend};
+    use std::env;
+
+    #[test]
+    fn test_config_loading() {
+        // Test that config can be loaded from environment
+        env::set_var("SMTP_PORT", "2525");
+        env::set_var("API_PORT", "3000");
+        env::set_var("DATABASE_URL", "sqlite:test.db");
+        env::set_var("DOMAIN_NAME", "test.local");
+        
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.smtp_port, 2525);
+        assert_eq!(config.api_port, 3000);
+        assert_eq!(config.database_url, "sqlite:test.db");
+        assert_eq!(config.domain_name, "test.local");
+    }
+
+    #[test]
+    fn test_config_with_ssl_enabled() {
+        env::set_var("SMTP_SSL_ENABLED", "true");
+        env::set_var("SMTP_SSL_CERT_PATH", "/path/to/cert.pem");
+        env::set_var("SMTP_SSL_KEY_PATH", "/path/to/key.pem");
+        
+        let config = Config::from_env().unwrap();
+        assert!(config.smtp_ssl.enabled);
+        assert_eq!(config.smtp_ssl.cert_path, Some(std::path::PathBuf::from("/path/to/cert.pem")));
+        assert_eq!(config.smtp_ssl.key_path, Some(std::path::PathBuf::from("/path/to/key.pem")));
+    }
+
+    #[test]
+    fn test_config_with_retention_hours() {
+        env::set_var("EMAIL_RETENTION_HOURS", "24");
+        
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.email_retention_hours, Some(24));
+    }
+
+    #[test]
+    fn test_config_with_reject_non_domain_emails() {
+        env::set_var("REJECT_NON_DOMAIN_EMAILS", "true");
+        
+        let config = Config::from_env().unwrap();
+        assert!(config.reject_non_domain_emails);
+    }
+
+    #[tokio::test]
+    async fn test_storage_backend_creation() {
+        let temp_dir = std::env::temp_dir();
+        let test_id = std::thread::current().id();
+        let db_path = temp_dir.join(format!("test_main_{:?}.db", test_id));
+        let database_url = format!("sqlite:{}", db_path.display());
+        
+        let storage: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::new(&database_url).await.unwrap());
+        
+        // Test that we can store and retrieve an email
+        let email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Test body".to_string(),
+            None,
+            vec![],
+        );
+        
+        storage.store_email(email.clone()).await.unwrap();
+        
+        let retrieved_emails = storage.get_emails_for_address("test@test.local").await.unwrap();
+        assert_eq!(retrieved_emails.len(), 1);
+        assert_eq!(retrieved_emails[0].id, email.id);
+    }
+
+    #[tokio::test]
+    async fn test_email_retention_cleanup() {
+        let temp_dir = std::env::temp_dir();
+        let test_id = std::thread::current().id();
+        let db_path = temp_dir.join(format!("test_retention_{:?}.db", test_id));
+        let database_url = format!("sqlite:{}", db_path.display());
+        
+        let storage: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::new(&database_url).await.unwrap());
+        
+        // Create an old email
+        let mut old_email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "Old Subject".to_string(),
+            "Old body".to_string(),
+            None,
+            vec![],
+        );
+        old_email.timestamp = chrono::Utc::now() - chrono::Duration::hours(25);
+        
+        // Create a new email
+        let new_email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "New Subject".to_string(),
+            "New body".to_string(),
+            None,
+            vec![],
+        );
+        
+        // Store both emails
+        storage.store_email(old_email.clone()).await.unwrap();
+        storage.store_email(new_email.clone()).await.unwrap();
+        
+        // Verify both emails exist
+        let emails = storage.get_emails_for_address("test@test.local").await.unwrap();
+        assert_eq!(emails.len(), 2);
+        
+        // Delete emails older than 24 hours
+        let deleted_details = storage.delete_old_emails_with_details(24).await.unwrap();
+        assert_eq!(deleted_details.len(), 1);
+        assert_eq!(deleted_details[0].0, old_email.id);
+        assert_eq!(deleted_details[0].1, old_email.to);
+        
+        // Verify only the new email remains
+        let emails = storage.get_emails_for_address("test@test.local").await.unwrap();
+        assert_eq!(emails.len(), 1);
+        assert_eq!(emails[0].id, new_email.id);
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_channel_creation() {
+        let (email_tx, mut email_rx) = broadcast::channel::<Email>(100);
+        let (deletion_tx, mut deletion_rx) = broadcast::channel::<(String, String)>(100);
+        
+        // Test that channels are created successfully
+        assert_eq!(email_tx.receiver_count(), 1);
+        assert_eq!(deletion_tx.receiver_count(), 1);
+        
+        // Test that we can send and receive messages
+        let email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Test body".to_string(),
+            None,
+            vec![],
+        );
+        
+        email_tx.send(email.clone()).unwrap();
+        let received_email = email_rx.recv().await.unwrap();
+        assert_eq!(received_email.id, email.id);
+        
+        deletion_tx.send(("test-id".to_string(), "test@test.local".to_string())).unwrap();
+        let (id, address) = deletion_rx.recv().await.unwrap();
+        assert_eq!(id, "test-id");
+        assert_eq!(address, "test@test.local");
+    }
+
+    #[test]
+    fn test_email_model_creation() {
+        let email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Test body".to_string(),
+            Some("Raw email content".to_string()),
+            vec![],
+        );
+        
+        assert_eq!(email.to, "test@test.local");
+        assert_eq!(email.from, "sender@example.com");
+        assert_eq!(email.subject, "Test Subject");
+        assert_eq!(email.body, "Test body");
+        assert_eq!(email.raw, Some("Raw email content".to_string()));
+        assert!(email.attachments.is_empty());
+        assert!(!email.id.is_empty());
+    }
+
+    #[test]
+    fn test_email_with_attachments() {
+        let attachments = vec![
+            crate::storage::models::Attachment {
+                filename: "test.txt".to_string(),
+                content_type: "text/plain".to_string(),
+                size: 100,
+                content: "dGVzdCBjb250ZW50".to_string(),
+            }
+        ];
+        
+        let email = Email::new(
+            "test@test.local".to_string(),
+            "sender@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Test body".to_string(),
+            None,
+            attachments.clone(),
+        );
+        
+        assert_eq!(email.attachments.len(), 1);
+        assert_eq!(email.attachments[0].filename, "test.txt");
+        assert_eq!(email.attachments[0].content_type, "text/plain");
+        assert_eq!(email.attachments[0].size, 100);
+        assert_eq!(email.attachments[0].content, "dGVzdCBjb250ZW50");
+    }
+
+    #[test]
+    fn test_config_default_values() {
+        // Clear environment variables to test defaults
+        env::remove_var("SMTP_PORT");
+        env::remove_var("SMTP_STARTTLS_PORT");
+        env::remove_var("SMTP_SSL_PORT");
+        env::remove_var("API_PORT");
+        env::remove_var("DATABASE_URL");
+        env::remove_var("DOMAIN_NAME");
+        env::remove_var("EMAIL_RETENTION_HOURS");
+        env::remove_var("REJECT_NON_DOMAIN_EMAILS");
+        env::remove_var("SMTP_SSL_ENABLED");
+        env::remove_var("SMTP_SSL_CERT_PATH");
+        env::remove_var("SMTP_SSL_KEY_PATH");
+        
+        let config = Config::from_env().unwrap();
+        
+        assert_eq!(config.smtp_port, 2525);
+        assert_eq!(config.api_port, 3000);
+        assert_eq!(config.database_url, "sqlite:emails.db");
+        assert_eq!(config.domain_name, "tempmail.local");
+        assert_eq!(config.email_retention_hours, None);
+        assert_eq!(config.reject_non_domain_emails, false);
+        assert_eq!(config.smtp_ssl.enabled, false);
+    }
+}
