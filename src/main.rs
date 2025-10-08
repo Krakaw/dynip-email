@@ -212,10 +212,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_storage_backend_creation() {
-        let temp_dir = std::env::temp_dir();
-        let test_id = std::thread::current().id();
-        let db_path = temp_dir.join(format!("test_main_{:?}.db", test_id));
-        let database_url = format!("sqlite:{}", db_path.display());
+        // Use in-memory database for tests
+        let database_url = "sqlite::memory:";
         
         let storage: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::new(&database_url).await.unwrap());
         
@@ -238,10 +236,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_email_retention_cleanup() {
-        let temp_dir = std::env::temp_dir();
-        let test_id = std::thread::current().id();
-        let db_path = temp_dir.join(format!("test_retention_{:?}.db", test_id));
-        let database_url = format!("sqlite:{}", db_path.display());
+        // Use in-memory database for tests
+        let database_url = "sqlite::memory:";
         
         let storage: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::new(&database_url).await.unwrap());
         

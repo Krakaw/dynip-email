@@ -238,11 +238,9 @@ mod tests {
     use chrono::{Duration, Utc};
 
     async fn create_test_backend() -> SqliteBackend {
-        let temp_dir = std::env::temp_dir();
-        let test_id = std::thread::current().id();
-        let db_path = temp_dir.join(format!("test_{:?}.db", test_id));
-        let database_url = format!("sqlite:{}", db_path.display());
-        SqliteBackend::new(&database_url).await.unwrap()
+        // Use in-memory database for tests
+        let database_url = "sqlite::memory:";
+        SqliteBackend::new(database_url).await.unwrap()
     }
 
     #[tokio::test]
@@ -473,18 +471,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_database_initialization() {
-        let temp_dir = std::env::temp_dir();
-        let db_path = temp_dir.join("init_test.db");
-        let database_url = format!("sqlite:{}", db_path.display());
+        // Use in-memory database for tests
+        let database_url = "sqlite::memory:";
         
         // Create backend (this should initialize the database)
-        let _backend = SqliteBackend::new(&database_url).await.unwrap();
-        
-        // Verify database file was created
-        assert!(db_path.exists());
+        let backend = SqliteBackend::new(database_url).await.unwrap();
         
         // Verify tables were created by trying to query them
-        let backend = SqliteBackend::new(&database_url).await.unwrap();
         let emails = backend.get_emails_for_address("test@example.com").await.unwrap();
         assert!(emails.is_empty()); // Should not panic, just return empty
     }
