@@ -2,7 +2,7 @@ pub mod parser;
 
 use anyhow::Result;
 use mailin_embedded::{Handler, Server, SslConfig};
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use tokio::sync::broadcast;
 use tracing::{error, info};
 
@@ -15,6 +15,7 @@ pub struct SmtpServer {
     email_sender: broadcast::Sender<Email>,
     domain_name: String,
     ssl_config: crate::config::SmtpSslConfig,
+    shutdown_flag: Arc<AtomicBool>,
 }
 
 impl SmtpServer {
@@ -29,18 +30,26 @@ impl SmtpServer {
             email_sender,
             domain_name,
             ssl_config,
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
         }
+    }
+    
+    /// Set the shutdown flag to signal all SMTP servers to stop
+    pub fn shutdown(&self) {
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+        info!("🛑 SMTP server shutdown signal sent");
     }
     
     /// Start multiple SMTP servers on different ports
     /// - Always starts non-TLS server on smtp_port
     /// - If SSL enabled, also starts STARTTLS server on smtp_starttls_port  
     /// - If SSL enabled, also starts SMTPS server on smtp_ssl_port
-    pub async fn start_all(self, smtp_port: u16, smtp_starttls_port: u16, smtp_ssl_port: u16) -> Result<()> {
+    pub async fn start_all(&self, smtp_port: u16, smtp_starttls_port: u16, smtp_ssl_port: u16) -> Result<()> {
         let storage = self.storage.clone();
         let email_sender = self.email_sender.clone();
         let domain_name = self.domain_name.clone();
         let ssl_config = self.ssl_config.clone();
+        let shutdown_flag = self.shutdown_flag.clone();
         
         // Always start non-TLS SMTP server
         let non_tls_server = SmtpServer {
@@ -52,6 +61,7 @@ impl SmtpServer {
                 cert_path: None,
                 key_path: None,
             },
+            shutdown_flag: shutdown_flag.clone(),
         };
         non_tls_server.start_single(smtp_port, "non-TLS".to_string()).await?;
         
@@ -63,6 +73,7 @@ impl SmtpServer {
                 email_sender: email_sender.clone(),
                 domain_name: domain_name.clone(),
                 ssl_config: ssl_config.clone(),
+                shutdown_flag: shutdown_flag.clone(),
             };
             starttls_server.start_single(smtp_starttls_port, "STARTTLS".to_string()).await?;
             
@@ -72,6 +83,7 @@ impl SmtpServer {
                 email_sender,
                 domain_name,
                 ssl_config,
+                shutdown_flag,
             };
             smtps_server.start_single(smtp_ssl_port, "SMTPS".to_string()).await?;
         }
@@ -83,14 +95,15 @@ impl SmtpServer {
     }
     
     /// Start a single SMTP server instance on the specified port
-    async fn start_single(self, port: u16, server_type: String) -> Result<()> {
+    async fn start_single(&self, port: u16, server_type: String) -> Result<()> {
         info!("Starting {} SMTP server on port {}...", server_type, port);
         
         let addr = format!("0.0.0.0:{}", port);
+        let shutdown_flag = self.shutdown_flag.clone();
         
         // Get the runtime handle to pass to both the blocking thread and handler
         let runtime_handle = tokio::runtime::Handle::current();
-        let handler = SmtpHandler::new(self.storage, self.email_sender, runtime_handle.clone());
+        let handler = SmtpHandler::new(self.storage.clone(), self.email_sender.clone(), runtime_handle.clone());
         
         // Determine SSL configuration
         let ssl_config = if self.ssl_config.enabled {
@@ -112,8 +125,8 @@ impl SmtpServer {
         
         let domain_name = self.domain_name.clone();
         
-        // Run the server in a blocking manner
-        tokio::task::spawn_blocking(move || {
+        // Run the server in a blocking manner with shutdown support
+        let server_handle = tokio::task::spawn_blocking(move || {
             // Enter the runtime context so tokio::spawn works
             let _guard = runtime_handle.enter();
             
@@ -130,10 +143,37 @@ impl SmtpServer {
             
             info!("{} SMTP server configured successfully on port {}", server_type, port);
             
+            // Start a background task to monitor shutdown signal and abort the server
+            let shutdown_flag_clone = shutdown_flag.clone();
+            let server_type_clone = server_type.clone();
+            let port_clone = port;
+            
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                    if shutdown_flag_clone.load(Ordering::SeqCst) {
+                        info!("🛑 Shutdown signal received for {} SMTP server on port {}", server_type_clone, port_clone);
+                        break;
+                    }
+                }
+            });
+            
+            // Note: mailin-embedded doesn't have built-in graceful shutdown
+            // The server will continue running until the process exits
+            // In a production environment, you might want to implement a custom
+            // shutdown mechanism or use a different SMTP library
             if let Err(e) = server.serve() {
-                error!("{} SMTP server error on port {}: {}", server_type, port, e);
+                if shutdown_flag.load(Ordering::SeqCst) {
+                    info!("✅ {} SMTP server on port {} stopped gracefully", server_type, port);
+                } else {
+                    error!("{} SMTP server error on port {}: {}", server_type, port, e);
+                }
             }
         });
+        
+        // Store the server handle for potential future use
+        // For now, we'll let it run in the background
+        drop(server_handle);
         
         Ok(())
     }

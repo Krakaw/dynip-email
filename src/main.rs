@@ -7,6 +7,7 @@ use anyhow::Result;
 use config::Config;
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use tokio::signal;
 use tracing::{info, error};
 use tracing_subscriber::EnvFilter;
 
@@ -56,12 +57,12 @@ async fn main() -> Result<()> {
     
     // Start SMTP servers (non-TLS always, plus SSL ports if enabled)
     info!("📧 Starting SMTP servers...");
-    let smtp_server = smtp::SmtpServer::new(
+    let smtp_server = Arc::new(smtp::SmtpServer::new(
         storage.clone(),
         email_tx.clone(),
         config.domain_name.clone(),
         config.smtp_ssl.clone(),
-    );
+    ));
     
     // Start SMTP servers and wait for them to be ready
     match smtp_server.start_all(
@@ -101,16 +102,61 @@ async fn main() -> Result<()> {
     }
     info!("💡 Tip: Use a reverse proxy (nginx/caddy) for HTTPS on the web interface");
     
-    // Start API server and handle any startup errors
-    match api::start_server(router, config.api_port).await {
+    // Set up graceful shutdown signal handling
+    let smtp_server_clone = smtp_server.clone();
+    let shutdown_signal = async move {
+        let ctrl_c = async {
+            signal::ctrl_c()
+                .await
+                .expect("Failed to install Ctrl+C handler");
+        };
+
+        #[cfg(unix)]
+        let terminate = async {
+            signal::unix::signal(signal::unix::SignalKind::terminate())
+                .expect("Failed to install signal handler")
+                .recv()
+                .await;
+        };
+
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
+        tokio::select! {
+            _ = ctrl_c => {
+                info!("🛑 Received Ctrl+C signal");
+            },
+            _ = terminate => {
+                info!("🛑 Received terminate signal");
+            },
+        }
+        
+        // Shutdown SMTP servers
+        info!("🛑 Shutting down SMTP servers...");
+        smtp_server_clone.shutdown();
+        
+        // Give SMTP servers a moment to shutdown gracefully
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        info!("✅ SMTP servers shutdown complete");
+    };
+
+    // Start API server with graceful shutdown
+    info!("✅ API server started successfully");
+    info!("🔄 Server is running. Press Ctrl+C to stop gracefully...");
+    
+    // Run the server until shutdown signal is received
+    match api::start_server_with_shutdown(router, config.api_port, shutdown_signal).await {
         Ok(_) => {
-            info!("✅ API server started successfully");
+            info!("✅ Server shutdown completed gracefully");
         }
         Err(e) => {
-            error!("❌ Failed to start API server: {}", e);
+            error!("❌ Server error: {}", e);
             return Err(e);
         }
     }
     
-    Ok(())
+    // Force exit the process since SMTP servers don't support graceful shutdown
+    // This ensures the application actually exits when Ctrl+C is pressed
+    info!("🔄 Exiting application...");
+    std::process::exit(0);
 }

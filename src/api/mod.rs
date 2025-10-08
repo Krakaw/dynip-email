@@ -55,6 +55,7 @@ pub fn create_router(
 }
 
 /// Start the API server
+#[allow(dead_code)]
 pub async fn start_server(router: Router, port: u16) -> anyhow::Result<()> {
     let addr = format!("0.0.0.0:{}", port);
     info!("Starting API server on {}", addr);
@@ -62,6 +63,32 @@ pub async fn start_server(router: Router, port: u16) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, router).await?;
     
+    Ok(())
+}
+
+/// Start the API server with graceful shutdown support
+pub async fn start_server_with_shutdown(
+    router: Router, 
+    port: u16, 
+    shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static
+) -> anyhow::Result<()> {
+    let addr = format!("0.0.0.0:{}", port);
+    info!("Starting API server on {}", addr);
+    
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    
+    // Create a shutdown signal that can be used to gracefully stop the server
+    let shutdown_signal = async {
+        shutdown_signal.await;
+        info!("🛑 Shutdown signal received, stopping server gracefully...");
+    };
+    
+    // Start the server with graceful shutdown
+    axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown_signal)
+        .await?;
+    
+    info!("✅ API server stopped gracefully");
     Ok(())
 }
 

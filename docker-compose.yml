@@ -1,6 +1,6 @@
 services:
   dynip-email:
-    build: .
+    image: dynip-email:latest
     container_name: dynip-email
     restart: unless-stopped
     ports:
