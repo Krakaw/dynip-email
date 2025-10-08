@@ -142,7 +142,89 @@ mod tests {
     use super::*;
     use std::env;
     
+    /// Load configuration from environment variables without loading .env file
+    /// This is used for tests to avoid interference from .env files
+    fn from_env_test() -> Result<Config> {
+        // Non-TLS SMTP port (always listening)
+        let smtp_port = std::env::var("SMTP_PORT")
+            .unwrap_or_else(|_| "2525".to_string())
+            .parse()?;
+
+        // STARTTLS port
+        let smtp_starttls_port = std::env::var("SMTP_STARTTLS_PORT")
+            .unwrap_or_else(|_| "587".to_string())
+            .parse()?;
+
+        // SSL/TLS port
+        let smtp_ssl_port = std::env::var("SMTP_SSL_PORT")
+            .unwrap_or_else(|_| "465".to_string())
+            .parse()?;
+
+        // API port
+        let api_port = std::env::var("API_PORT")
+            .unwrap_or_else(|_| "3000".to_string())
+            .parse()?;
+        
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "sqlite:emails.db".to_string());
+        
+        let domain_name = std::env::var("DOMAIN_NAME")
+            .unwrap_or_else(|_| "tempmail.local".to_string());
+        
+        let email_retention_hours = std::env::var("EMAIL_RETENTION_HOURS")
+            .ok()
+            .and_then(|s| s.parse().ok());
+        
+        let reject_non_domain_emails = std::env::var("REJECT_NON_DOMAIN_EMAILS")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse()
+            .unwrap_or(false);
+        
+        let smtp_ssl_enabled = std::env::var("SMTP_SSL_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+        
+        let smtp_ssl = if smtp_ssl_enabled {
+            let cert_path = std::env::var("SMTP_SSL_CERT_PATH")
+                .map(PathBuf::from)
+                .ok();
+            let key_path = std::env::var("SMTP_SSL_KEY_PATH")
+                .map(PathBuf::from)
+                .ok();
+            
+            if cert_path.is_none() || key_path.is_none() {
+                anyhow::bail!("SMTP_SSL_ENABLED is true but SMTP_SSL_CERT_PATH and SMTP_SSL_KEY_PATH must be set");
+            }
+            
+            SmtpSslConfig {
+                enabled: true,
+                cert_path,
+                key_path,
+            }
+        } else {
+            SmtpSslConfig {
+                enabled: false,
+                cert_path: None,
+                key_path: None,
+            }
+        };
+        
+        Ok(Config {
+            smtp_port,
+            smtp_starttls_port,
+            smtp_ssl_port,
+            api_port,
+            database_url,
+            domain_name,
+            email_retention_hours,
+            reject_non_domain_emails,
+            smtp_ssl,
+        })
+    }
+    
     fn clear_all_env_vars() {
+        // Clear all environment variables that might interfere with tests
         env::remove_var("SMTP_PORT");
         env::remove_var("SMTP_STARTTLS_PORT");
         env::remove_var("SMTP_SSL_PORT");
@@ -154,12 +236,16 @@ mod tests {
         env::remove_var("SMTP_SSL_ENABLED");
         env::remove_var("SMTP_SSL_CERT_PATH");
         env::remove_var("SMTP_SSL_KEY_PATH");
+        
+        // Also clear any other potential env vars
+        env::remove_var("SMTP_SSL_CERT_PATH");
+        env::remove_var("SMTP_SSL_KEY_PATH");
     }
 
     #[test]
     fn test_config_from_env_defaults() {
         clear_all_env_vars();
-        let config = Config::from_env().unwrap();
+        let config = from_env_test().unwrap();
         
         assert_eq!(config.smtp_port, 2525);
         assert_eq!(config.smtp_starttls_port, 587);
@@ -174,6 +260,7 @@ mod tests {
 
     #[test]
     fn test_config_from_env_custom() {
+        // Clear all environment variables first to avoid interference
         clear_all_env_vars();
         env::set_var("SMTP_PORT", "2526");
         env::set_var("SMTP_STARTTLS_PORT", "588");
@@ -187,7 +274,7 @@ mod tests {
         env::set_var("SMTP_SSL_CERT_PATH", "/path/to/cert.pem");
         env::set_var("SMTP_SSL_KEY_PATH", "/path/to/key.pem");
 
-        let config = Config::from_env().unwrap();
+        let config = from_env_test().unwrap();
         
         assert_eq!(config.smtp_port, 2526);
         assert_eq!(config.smtp_starttls_port, 588);
@@ -209,7 +296,7 @@ mod tests {
         env::remove_var("SMTP_SSL_CERT_PATH");
         env::remove_var("SMTP_SSL_KEY_PATH");
 
-        let result = Config::from_env();
+        let result = from_env_test();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("SMTP_SSL_CERT_PATH and SMTP_SSL_KEY_PATH must be set"));
     }
@@ -219,7 +306,7 @@ mod tests {
         clear_all_env_vars();
         env::set_var("SMTP_PORT", "invalid");
         
-        let result = Config::from_env();
+        let result = from_env_test();
         assert!(result.is_err());
     }
 
@@ -228,7 +315,7 @@ mod tests {
         clear_all_env_vars();
         env::set_var("EMAIL_RETENTION_HOURS", "invalid");
         
-        let config = Config::from_env().unwrap();
+        let config = from_env_test().unwrap();
         assert_eq!(config.email_retention_hours, None);
     }
 
@@ -237,7 +324,7 @@ mod tests {
         clear_all_env_vars();
         env::set_var("REJECT_NON_DOMAIN_EMAILS", "invalid");
         
-        let config = Config::from_env().unwrap();
+        let config = from_env_test().unwrap();
         assert_eq!(config.reject_non_domain_emails, false);
     }
 

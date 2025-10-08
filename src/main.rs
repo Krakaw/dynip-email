@@ -166,6 +166,66 @@ mod tests {
     use crate::config::Config;
     use crate::storage::{models::Email, sqlite::SqliteBackend};
     use std::env;
+    
+    /// Load configuration from environment variables without loading .env file
+    /// This is used for tests to avoid interference from .env files
+    fn from_env_test() -> Result<Config> {
+        // Non-TLS SMTP port (always listening)
+        let smtp_port = std::env::var("SMTP_PORT")
+            .unwrap_or_else(|_| "2525".to_string())
+            .parse()?;
+
+        // STARTTLS port
+        let smtp_starttls_port = std::env::var("SMTP_STARTTLS_PORT")
+            .unwrap_or_else(|_| "587".to_string())
+            .parse()?;
+
+        // SSL/TLS port
+        let smtp_ssl_port = std::env::var("SMTP_SSL_PORT")
+            .unwrap_or_else(|_| "465".to_string())
+            .parse()?;
+
+        // API port
+        let api_port = std::env::var("API_PORT")
+            .unwrap_or_else(|_| "3000".to_string())
+            .parse()?;
+        
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "sqlite:emails.db".to_string());
+        
+        let domain_name = std::env::var("DOMAIN_NAME")
+            .unwrap_or_else(|_| "tempmail.local".to_string());
+        
+        let email_retention_hours = std::env::var("EMAIL_RETENTION_HOURS")
+            .ok()
+            .and_then(|s| s.parse().ok());
+        
+        let reject_non_domain_emails = std::env::var("REJECT_NON_DOMAIN_EMAILS")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse()
+            .unwrap_or(false);
+        
+        let smtp_ssl = crate::config::SmtpSslConfig {
+            enabled: std::env::var("SMTP_SSL_ENABLED")
+                .unwrap_or_else(|_| "false".to_string())
+                .parse()
+                .unwrap_or(false),
+            cert_path: std::env::var("SMTP_SSL_CERT_PATH").ok().map(std::path::PathBuf::from),
+            key_path: std::env::var("SMTP_SSL_KEY_PATH").ok().map(std::path::PathBuf::from),
+        };
+        
+        Ok(Config {
+            smtp_port,
+            smtp_starttls_port,
+            smtp_ssl_port,
+            api_port,
+            database_url,
+            domain_name,
+            email_retention_hours,
+            reject_non_domain_emails,
+            smtp_ssl,
+        })
+    }
 
     #[test]
     fn test_config_loading() {
@@ -175,7 +235,7 @@ mod tests {
         env::set_var("DATABASE_URL", "sqlite:test.db");
         env::set_var("DOMAIN_NAME", "test.local");
         
-        let config = Config::from_env().unwrap();
+        let config = from_env_test().unwrap();
         assert_eq!(config.smtp_port, 2525);
         assert_eq!(config.api_port, 3000);
         assert_eq!(config.database_url, "sqlite:test.db");
@@ -188,7 +248,7 @@ mod tests {
         env::set_var("SMTP_SSL_CERT_PATH", "/path/to/cert.pem");
         env::set_var("SMTP_SSL_KEY_PATH", "/path/to/key.pem");
         
-        let config = Config::from_env().unwrap();
+        let config = from_env_test().unwrap();
         assert!(config.smtp_ssl.enabled);
         assert_eq!(config.smtp_ssl.cert_path, Some(std::path::PathBuf::from("/path/to/cert.pem")));
         assert_eq!(config.smtp_ssl.key_path, Some(std::path::PathBuf::from("/path/to/key.pem")));
@@ -198,7 +258,7 @@ mod tests {
     fn test_config_with_retention_hours() {
         env::set_var("EMAIL_RETENTION_HOURS", "24");
         
-        let config = Config::from_env().unwrap();
+        let config = from_env_test().unwrap();
         assert_eq!(config.email_retention_hours, Some(24));
     }
 
@@ -206,7 +266,7 @@ mod tests {
     fn test_config_with_reject_non_domain_emails() {
         env::set_var("REJECT_NON_DOMAIN_EMAILS", "true");
         
-        let config = Config::from_env().unwrap();
+        let config = from_env_test().unwrap();
         assert!(config.reject_non_domain_emails);
     }
 
@@ -373,7 +433,7 @@ mod tests {
         env::remove_var("SMTP_SSL_CERT_PATH");
         env::remove_var("SMTP_SSL_KEY_PATH");
         
-        let config = Config::from_env().unwrap();
+        let config = from_env_test().unwrap();
         
         assert_eq!(config.smtp_port, 2525);
         assert_eq!(config.api_port, 3000);
