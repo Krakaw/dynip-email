@@ -230,21 +230,52 @@ function connectWebSocket(address) {
         try {
             const data = JSON.parse(event.data);
             
-            if (data.type === 'connected') {
+            if (data.type === 'Connected') {
                 console.log('Connected to WebSocket for:', data.address);
                 return;
             }
             
             // New email received
-            if (data.id) {
-                console.log('New email received:', data);
-                data.isNew = true;
-                emails.unshift(data);
+            if (data.type === 'Email') {
+                const email = data;
+                console.log('New email received:', email);
+                email.isNew = true;
+                emails.unshift(email);
                 displayEmails(emails);
                 updateEmailCount(emails.length);
                 
                 // Show notification
-                showNotification('📬 New email received!', `From: ${data.from}`);
+                showNotification('📬 New email received!', `From: ${email.from}`);
+            }
+            
+            // Email deleted
+            if (data.type === 'EmailDeleted') {
+                const { id, address } = data;
+                console.log('Email deleted:', id, 'for address:', address);
+                
+                // Remove the email from the local array
+                const initialLength = emails.length;
+                emails = emails.filter(email => email.id !== id);
+                
+                // Update the display if the email count changed
+                if (emails.length !== initialLength) {
+                    displayEmails(emails);
+                    updateEmailCount(emails.length);
+                    
+                    // If the deleted email was currently selected, clear the detail view
+                    if (selectedEmailId === id) {
+                        selectedEmailId = null;
+                        emailDetail.innerHTML = '<div class="empty-state"><p>📭 Select an email to view</p></div>';
+                        
+                        // Remove active state from all email items
+                        document.querySelectorAll('.email-item').forEach(item => {
+                            item.classList.remove('active');
+                        });
+                    }
+                    
+                    // Show notification
+                    showNotification('🗑️ Email deleted', 'An email was removed due to retention policy');
+                }
             }
         } catch (error) {
             console.error('Failed to parse WebSocket message:', error);

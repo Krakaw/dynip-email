@@ -192,5 +192,42 @@ impl StorageBackend for SqliteBackend {
         
         Ok(deleted)
     }
+    
+    async fn delete_old_emails_with_details(&self, hours: i64) -> Result<Vec<(String, String)>> {
+        let cutoff = Utc::now() - Duration::hours(hours);
+        let cutoff_str = cutoff.to_rfc3339();
+        
+        // First, get the IDs and addresses of emails to be deleted
+        let rows = sqlx::query_as::<_, (String, String)>(
+            r#"
+            SELECT id, to_address
+            FROM emails
+            WHERE timestamp < ?
+            "#,
+        )
+        .bind(&cutoff_str)
+        .fetch_all(&self.pool)
+        .await?;
+        
+        let deleted_emails = rows.clone();
+        
+        // Then delete them
+        let result = sqlx::query(
+            r#"
+            DELETE FROM emails
+            WHERE timestamp < ?
+            "#,
+        )
+        .bind(cutoff_str)
+        .execute(&self.pool)
+        .await?;
+        
+        let deleted = result.rows_affected() as usize;
+        if deleted > 0 {
+            warn!("Deleted {} old emails (older than {} hours)", deleted, hours);
+        }
+        
+        Ok(deleted_emails)
+    }
 }
 

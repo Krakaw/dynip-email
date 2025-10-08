@@ -20,5 +20,8 @@ pub trait StorageBackend: Send + Sync {
     
     /// Delete old emails (for cleanup/retention)
     async fn delete_old_emails(&self, hours: i64) -> Result<usize>;
+    
+    /// Delete old emails and return details of deleted emails
+    async fn delete_old_emails_with_details(&self, hours: i64) -> Result<Vec<(String, String)>>;
 }
 

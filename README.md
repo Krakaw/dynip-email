@@ -11,12 +11,13 @@ A lightweight, temporary mail server that accepts emails to any address with a m
 🚀 **Lightweight** - Minimal dependencies, fast performance  
 📱 **No Registration** - Just enter any email address to view messages  
 🗑️ **Auto-Cleanup** - Configurable email retention with automatic deletion  
+🔔 **Live Notifications** - Real-time WebSocket updates for email deletions  
 
 ## Quick Start
 
 ### Prerequisites
 
-- Rust 1.70+ (install from [rustup.rs](https://rustup.rs))
+- Rust 1.90+ (install from [rustup.rs](https://rustup.rs))
 
 ### Installation & Running
 
@@ -216,6 +217,7 @@ For detailed guides and technical documentation, see the `/docs` folder:
 
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Comprehensive reference for all configuration options
 - **[Email Retention](docs/EMAIL_RETENTION.md)** - Automatic email cleanup and retention policies
+- **[WebSocket Deletion Notifications](docs/WEBSOCKET_DELETION_NOTIFICATIONS.md)** - Real-time deletion notifications
 - **[Let's Encrypt Setup](docs/LETSENCRYPT_SETUP.md)** - Step-by-step guide for SSL/TLS configuration
 - **[Port Configuration](docs/PORTS_CONFIGURATION.md)** - Detailed SMTP port configuration options
 - **[Domain Normalization](docs/BACKEND_DOMAIN_NORMALIZATION.md)** - Technical details on address handling

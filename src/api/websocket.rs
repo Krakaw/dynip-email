@@ -10,11 +10,49 @@ use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
 use crate::storage::models::Email;
+use serde::{Deserialize, Serialize};
+
+/// WebSocket message types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum WsMessage {
+    /// New email received
+    Email {
+        id: String,
+        to: String,
+        from: String,
+        subject: String,
+        body: String,
+        timestamp: String,
+        raw: Option<String>,
+        attachments: Vec<crate::storage::models::Attachment>,
+    },
+    /// Email deleted
+    EmailDeleted { id: String, address: String },
+    /// Connection established
+    Connected { address: String },
+}
+
+impl From<Email> for WsMessage {
+    fn from(email: Email) -> Self {
+        WsMessage::Email {
+            id: email.id,
+            to: email.to,
+            from: email.from,
+            subject: email.subject,
+            body: email.body,
+            timestamp: email.timestamp.to_rfc3339(),
+            raw: email.raw,
+            attachments: email.attachments,
+        }
+    }
+}
 
 /// WebSocket connection state
 #[derive(Clone)]
 pub struct WsState {
     pub email_receiver: broadcast::Sender<Email>,
+    pub deletion_sender: broadcast::Sender<(String, String)>, // (email_id, address)
     pub domain_name: String,
 }
 
@@ -49,19 +87,15 @@ pub async fn websocket_handler(
 async fn handle_socket(socket: WebSocket, address: String, state: WsState) {
     let (mut sender, mut receiver) = socket.split();
     let mut email_rx = state.email_receiver.subscribe();
+    let mut deletion_rx = state.deletion_sender.subscribe();
     
     let address_clone = address.clone();
     info!("WebSocket connected for address: {}", address);
     
     // Send initial connection message
+    let connected_msg = WsMessage::Connected { address: address.clone() };
     if let Err(e) = sender
-        .send(Message::Text(
-            serde_json::json!({
-                "type": "connected",
-                "address": &address
-            })
-            .to_string(),
-        ))
+        .send(Message::Text(serde_json::to_string(&connected_msg).unwrap()))
         .await
     {
         error!("Failed to send connection message: {}", e);
@@ -71,19 +105,59 @@ async fn handle_socket(socket: WebSocket, address: String, state: WsState) {
     // Spawn a task to handle incoming messages from the client (mostly just pings)
     let address_for_send = address.clone();
     let mut send_task = tokio::spawn(async move {
-        while let Ok(email) = email_rx.recv().await {
-            // Only send emails that match this address
-            if email.to == address_for_send {
-                let json = match serde_json::to_string(&email) {
-                    Ok(json) => json,
-                    Err(e) => {
-                        error!("Failed to serialize email: {}", e);
-                        continue;
+        loop {
+            tokio::select! {
+                // Handle new emails
+                email_result = email_rx.recv() => {
+                    if let Ok(email) = email_result {
+                        // Only send emails that match this address
+                        if email.to == address_for_send {
+                            let msg = WsMessage::from(email);
+                            let json = match serde_json::to_string(&msg) {
+                                Ok(json) => json,
+                                Err(e) => {
+                                    error!("Failed to serialize email: {}", e);
+                                    continue;
+                                }
+                            };
+                            
+                            if sender.send(Message::Text(json)).await.is_err() {
+                                break;
+                            }
+                        }
                     }
-                };
-                
-                if sender.send(Message::Text(json)).await.is_err() {
-                    break;
+                }
+                // Handle email deletions
+                deletion_result = deletion_rx.recv() => {
+                    if let Ok((email_id, deleted_address)) = deletion_result {
+                        info!("📨 Received deletion event for email {} to address {}", email_id, deleted_address);
+                        // Only send deletions for this address
+                        if deleted_address == address_for_send {
+                            let msg = WsMessage::EmailDeleted { 
+                                id: email_id.clone(), 
+                                address: deleted_address.clone() 
+                            };
+                            let json = match serde_json::to_string(&msg) {
+                                Ok(json) => {
+                                    info!("📤 Sending deletion notification: {}", json);
+                                    json
+                                },
+                                Err(e) => {
+                                    error!("Failed to serialize deletion: {}", e);
+                                    continue;
+                                }
+                            };
+                            
+                            if sender.send(Message::Text(json)).await.is_err() {
+                                error!("Failed to send deletion notification to WebSocket");
+                                break;
+                            } else {
+                                info!("✅ Deletion notification sent successfully");
+                            }
+                        } else {
+                            info!("⏭️  Skipping deletion notification for different address: {} (current: {})", deleted_address, address_for_send);
+                        }
+                    }
                 }
             }
         }

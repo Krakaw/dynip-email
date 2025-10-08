@@ -21,10 +21,12 @@ use websocket::{websocket_handler, WsState};
 pub fn create_router(
     storage: Arc<dyn StorageBackend>,
     email_sender: broadcast::Sender<Email>,
+    deletion_sender: broadcast::Sender<(String, String)>,
     domain_name: String,
 ) -> Router {
     let ws_state = WsState {
         email_receiver: email_sender.clone(),
+        deletion_sender,
         domain_name: domain_name.clone(),
     };
     

@@ -31,21 +31,29 @@ async fn main() -> Result<()> {
     // Initialize storage backend
     let storage: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::new(&config.database_url).await?);
     
-    // Create broadcast channel for email notifications
+    // Create broadcast channels for email notifications and deletions
     let (email_tx, _) = broadcast::channel::<Email>(100);
+    let (deletion_tx, _) = broadcast::channel::<(String, String)>(100);
     
     // Start email retention cleanup task if configured
     if let Some(retention_hours) = config.email_retention_hours {
         info!("📅 Email retention enabled: emails older than {} hours will be deleted", retention_hours);
         let storage_clone = storage.clone();
+        let deletion_tx_clone = deletion_tx.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Run every hour
             loop {
                 interval.tick().await;
-                match storage_clone.delete_old_emails(retention_hours).await {
-                    Ok(count) => {
-                        if count > 0 {
-                            info!("🗑️  Email retention cleanup: deleted {} old email(s)", count);
+                match storage_clone.delete_old_emails_with_details(retention_hours).await {
+                    Ok(deleted_emails) => {
+                        if !deleted_emails.is_empty() {
+                            info!("🗑️  Email retention cleanup: deleted {} old email(s)", deleted_emails.len());
+                            
+                            // Send deletion notifications for each deleted email
+                            for (email_id, address) in deleted_emails {
+                                info!("📤 Broadcasting deletion notification for email {} to address {}", email_id, address);
+                                let _ = deletion_tx_clone.send((email_id, address));
+                            }
                         }
                     }
                     Err(e) => {
@@ -89,7 +97,7 @@ async fn main() -> Result<()> {
     }
     
     // Create API router
-    let router = api::create_router(storage.clone(), email_tx, config.domain_name.clone());
+    let router = api::create_router(storage.clone(), email_tx, deletion_tx, config.domain_name.clone());
     
     // Start API server
     info!("🚀 Starting API server on port {}...", config.api_port);
