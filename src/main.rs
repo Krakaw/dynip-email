@@ -15,7 +15,6 @@ use storage::{models::Email, sqlite::SqliteBackend, StorageBackend};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("Starting Temporary Mail Server");
     
     // Initialize tracing with env filter
     tracing_subscriber::fmt()
@@ -25,32 +24,12 @@ async fn main() -> Result<()> {
         )
         .init();
     
-    println!("Tracing initialized");
     
-    info!("🚀 Starting Temporary Mail Server");
     
-    // Load configuration from .env and environment
-    println!("Loading configuration...");
     let config = Config::from_env()?;
-    println!("Configuration loaded successfully");
-    
-    info!("📝 Configuration:");
-    info!("  SMTP Port (non-TLS): {}", config.smtp_port);
-    if config.smtp_ssl.enabled {
-        info!("  SMTP Port (STARTTLS): {}", config.smtp_starttls_port);
-        info!("  SMTP Port (SMTPS): {}", config.smtp_ssl_port);
-        info!("  SMTP SSL: Enabled (Let's Encrypt)");
-    } else {
-        info!("  SMTP SSL: Disabled");
-    }
-    info!("  API Port: {} (HTTP - use reverse proxy for HTTPS)", config.api_port);
-    info!("  Database: {}", config.database_url);
-    info!("  Domain: {}", config.domain_name);
     
     // Initialize storage backend
-    info!("💾 Initializing storage backend...");
     let storage: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::new(&config.database_url).await?);
-    info!("✅ Storage backend initialized");
     
     // Create broadcast channel for email notifications
     let (email_tx, _) = broadcast::channel::<Email>(100);
@@ -62,6 +41,7 @@ async fn main() -> Result<()> {
         email_tx.clone(),
         config.domain_name.clone(),
         config.smtp_ssl.clone(),
+        config.reject_non_domain_emails,
     ));
     
     // Start SMTP servers and wait for them to be ready
@@ -85,22 +65,10 @@ async fn main() -> Result<()> {
     }
     
     // Create API router
-    info!("🌐 Creating API server...");
     let router = api::create_router(storage.clone(), email_tx, config.domain_name.clone());
     
     // Start API server
     info!("🚀 Starting API server on port {}...", config.api_port);
-    info!("📱 Web interface available at: http://localhost:{}", config.api_port);
-    if config.smtp_ssl.enabled {
-        info!("📬 SMTP servers listening on:");
-        info!("   • Port {} (non-TLS) - standard SMTP", config.smtp_port);
-        info!("   • Port {} (STARTTLS) - secure submission", config.smtp_starttls_port);
-        info!("   • Port {} (SMTPS) - implicit TLS", config.smtp_ssl_port);
-        info!("🔒 SSL/TLS enabled with Let's Encrypt certificates");
-    } else {
-        info!("📬 SMTP server listening on port {} (non-TLS only)", config.smtp_port);
-    }
-    info!("💡 Tip: Use a reverse proxy (nginx/caddy) for HTTPS on the web interface");
     
     // Set up graceful shutdown signal handling
     let smtp_server_clone = smtp_server.clone();
@@ -141,8 +109,7 @@ async fn main() -> Result<()> {
     };
 
     // Start API server with graceful shutdown
-    info!("✅ API server started successfully");
-    info!("🔄 Server is running. Press Ctrl+C to stop gracefully...");
+    info!("✅ Server is running. Press Ctrl+C to stop gracefully...");
     
     // Run the server until shutdown signal is received
     match api::start_server_with_shutdown(router, config.api_port, shutdown_signal).await {

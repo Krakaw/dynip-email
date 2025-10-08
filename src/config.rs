@@ -12,6 +12,7 @@ pub struct Config {
     pub smtp_ssl: SmtpSslConfig,
     pub domain_name: String,
     pub email_retention_hours: Option<i64>,
+    pub reject_non_domain_emails: bool,
 }
 
 /// SMTP SSL/TLS configuration for Let's Encrypt certificates
@@ -57,6 +58,11 @@ impl Config {
             .ok()
             .and_then(|s| s.parse().ok());
         
+        let reject_non_domain_emails = std::env::var("REJECT_NON_DOMAIN_EMAILS")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+        
         // SMTP SSL configuration for Let's Encrypt
         let smtp_ssl_enabled = std::env::var("SMTP_SSL_ENABLED")
             .unwrap_or_else(|_| "false".to_string())
@@ -97,6 +103,7 @@ impl Config {
             smtp_ssl,
             domain_name,
             email_retention_hours,
+            reject_non_domain_emails,
         })
     }
 }

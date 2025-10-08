@@ -4,7 +4,7 @@ use anyhow::Result;
 use mailin_embedded::{Handler, Server, SslConfig};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use tokio::sync::broadcast;
-use tracing::{error, info};
+use tracing::{error, debug, info};
 
 use crate::storage::{models::Email, StorageBackend};
 use parser::parse_email;
@@ -15,6 +15,7 @@ pub struct SmtpServer {
     email_sender: broadcast::Sender<Email>,
     domain_name: String,
     ssl_config: crate::config::SmtpSslConfig,
+    reject_non_domain_emails: bool,
     shutdown_flag: Arc<AtomicBool>,
 }
 
@@ -24,12 +25,14 @@ impl SmtpServer {
         email_sender: broadcast::Sender<Email>,
         domain_name: String,
         ssl_config: crate::config::SmtpSslConfig,
+        reject_non_domain_emails: bool,
     ) -> Self {
         Self {
             storage,
             email_sender,
             domain_name,
             ssl_config,
+            reject_non_domain_emails,
             shutdown_flag: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -49,6 +52,7 @@ impl SmtpServer {
         let email_sender = self.email_sender.clone();
         let domain_name = self.domain_name.clone();
         let ssl_config = self.ssl_config.clone();
+        let reject_non_domain_emails = self.reject_non_domain_emails;
         let shutdown_flag = self.shutdown_flag.clone();
         
         // Always start non-TLS SMTP server
@@ -61,6 +65,7 @@ impl SmtpServer {
                 cert_path: None,
                 key_path: None,
             },
+            reject_non_domain_emails,
             shutdown_flag: shutdown_flag.clone(),
         };
         non_tls_server.start_single(smtp_port, "non-TLS".to_string()).await?;
@@ -73,6 +78,7 @@ impl SmtpServer {
                 email_sender: email_sender.clone(),
                 domain_name: domain_name.clone(),
                 ssl_config: ssl_config.clone(),
+                reject_non_domain_emails,
                 shutdown_flag: shutdown_flag.clone(),
             };
             starttls_server.start_single(smtp_starttls_port, "STARTTLS".to_string()).await?;
@@ -83,6 +89,7 @@ impl SmtpServer {
                 email_sender,
                 domain_name,
                 ssl_config,
+                reject_non_domain_emails,
                 shutdown_flag,
             };
             smtps_server.start_single(smtp_ssl_port, "SMTPS".to_string()).await?;
@@ -96,14 +103,20 @@ impl SmtpServer {
     
     /// Start a single SMTP server instance on the specified port
     async fn start_single(&self, port: u16, server_type: String) -> Result<()> {
-        info!("Starting {} SMTP server on port {}...", server_type, port);
+        debug!("Starting {} SMTP server on port {}...", server_type, port);
         
         let addr = format!("0.0.0.0:{}", port);
         let shutdown_flag = self.shutdown_flag.clone();
         
         // Get the runtime handle to pass to both the blocking thread and handler
         let runtime_handle = tokio::runtime::Handle::current();
-        let handler = SmtpHandler::new(self.storage.clone(), self.email_sender.clone(), runtime_handle.clone());
+        let handler = SmtpHandler::new(
+            self.storage.clone(), 
+            self.email_sender.clone(), 
+            runtime_handle.clone(),
+            self.domain_name.clone(),
+            self.reject_non_domain_emails,
+        );
         
         // Determine SSL configuration
         let ssl_config = if self.ssl_config.enabled {
@@ -140,8 +153,6 @@ impl SmtpServer {
                 error!("Failed to configure {} SMTP server on port {}: {}", server_type, port, e);
                 return;
             }
-            
-            info!("{} SMTP server configured successfully on port {}", server_type, port);
             
             // Start a background task to monitor shutdown signal and abort the server
             let shutdown_flag_clone = shutdown_flag.clone();
@@ -185,6 +196,8 @@ struct SmtpHandler {
     storage: Arc<dyn StorageBackend>,
     email_sender: broadcast::Sender<Email>,
     runtime_handle: tokio::runtime::Handle,
+    domain_name: String,
+    reject_non_domain_emails: bool,
     // Store email data during the session
     from: Arc<std::sync::Mutex<String>>,
     to: Arc<std::sync::Mutex<Vec<String>>>,
@@ -196,11 +209,15 @@ impl SmtpHandler {
         storage: Arc<dyn StorageBackend>,
         email_sender: broadcast::Sender<Email>,
         runtime_handle: tokio::runtime::Handle,
+        domain_name: String,
+        reject_non_domain_emails: bool,
     ) -> Self {
         Self {
             storage,
             email_sender,
             runtime_handle,
+            domain_name,
+            reject_non_domain_emails,
             from: Arc::new(std::sync::Mutex::new(String::new())),
             to: Arc::new(std::sync::Mutex::new(Vec::new())),
             data: Arc::new(std::sync::Mutex::new(Vec::new())),
@@ -217,6 +234,24 @@ impl Handler for SmtpHandler {
         to: &[String],
     ) -> mailin_embedded::Response {
         info!("Receiving email from {} to {:?}", from, to);
+        
+        // Check domain validation if enabled
+        if self.reject_non_domain_emails {
+            for recipient in to {
+                if let Some(at_pos) = recipient.find('@') {
+                    let domain = &recipient[at_pos + 1..];
+                    if domain != self.domain_name {
+                        info!("Rejecting email to {} - domain {} does not match configured domain {}", 
+                              recipient, domain, self.domain_name);
+                        return mailin_embedded::response::NO_MAILBOX;
+                    }
+                } else {
+                    // Invalid email format, reject
+                    info!("Rejecting email to {} - invalid email format", recipient);
+                    return mailin_embedded::response::INTERNAL_ERROR;
+                }
+            }
+        }
         
         // Store from and to
         *self.from.lock().unwrap() = from.to_string();
@@ -258,18 +293,15 @@ impl Handler for SmtpHandler {
         let email_clone = email.clone();
         
         // Use the stored runtime handle to spawn the storage task
-        info!("Spawning storage task on tokio runtime");
         self.runtime_handle.spawn(async move {
-            info!("Storing email {} in database", email_clone.id);
             if let Err(e) = storage.store_email(email_clone.clone()).await {
                 error!("Failed to store email: {}", e);
             } else {
-                info!("Successfully stored email {}", email_clone.id);
+                debug!("Successfully stored email {}", email_clone.id);
             }
         });
         
         // Broadcast the email to WebSocket listeners
-        info!("Broadcasting email to WebSocket listeners");
         let _ = self.email_sender.send(email);
         
         mailin_embedded::response::OK
