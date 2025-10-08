@@ -203,31 +203,6 @@ impl StorageBackend for SqliteBackend {
         ))
     }
 
-    async fn delete_old_emails(&self, hours: i64) -> Result<usize> {
-        let cutoff = Utc::now() - Duration::hours(hours);
-        let cutoff_str = cutoff.to_rfc3339();
-
-        let result = sqlx::query(
-            r#"
-            DELETE FROM emails
-            WHERE timestamp < ?
-            "#,
-        )
-        .bind(cutoff_str)
-        .execute(&self.pool)
-        .await?;
-
-        let deleted = result.rows_affected() as usize;
-        if deleted > 0 {
-            warn!(
-                "Deleted {} old emails (older than {} hours)",
-                deleted, hours
-            );
-        }
-
-        Ok(deleted)
-    }
-
     async fn delete_old_emails_with_details(&self, hours: i64) -> Result<Vec<(String, String)>> {
         let cutoff = Utc::now() - Duration::hours(hours);
         let cutoff_str = cutoff.to_rfc3339();
@@ -463,8 +438,8 @@ mod tests {
         assert_eq!(emails.len(), 2);
 
         // Delete emails older than 24 hours
-        let deleted_count = backend.delete_old_emails(24).await.unwrap();
-        assert_eq!(deleted_count, 1);
+        let deleted_details = backend.delete_old_emails_with_details(24).await.unwrap();
+        assert_eq!(deleted_details.len(), 1);
 
         // Verify only the new email remains
         let emails = backend
@@ -517,8 +492,8 @@ mod tests {
         backend.store_email(email.clone()).await.unwrap();
 
         // Try to delete emails older than 24 hours (should delete none)
-        let deleted_count = backend.delete_old_emails(24).await.unwrap();
-        assert_eq!(deleted_count, 0);
+        let deleted_details = backend.delete_old_emails_with_details(24).await.unwrap();
+        assert_eq!(deleted_details.len(), 0);
 
         // Verify the email still exists
         let emails = backend

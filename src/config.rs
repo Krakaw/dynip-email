@@ -1,6 +1,9 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
+/// Type alias for SSL certificate data (certificates, private_key)
+pub type SslCertificates = (Vec<Vec<u8>>, Vec<u8>);
+
 /// Application configuration
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -106,7 +109,7 @@ impl Config {
 
 impl SmtpSslConfig {
     /// Load SSL certificates from the filesystem
-    pub fn load_certificates(&self) -> Result<Option<(Vec<Vec<u8>>, Vec<u8>)>> {
+    pub fn load_certificates(&self) -> Result<Option<SslCertificates>> {
         if !self.enabled {
             return Ok(None);
         }
