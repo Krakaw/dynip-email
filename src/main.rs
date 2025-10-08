@@ -34,6 +34,30 @@ async fn main() -> Result<()> {
     // Create broadcast channel for email notifications
     let (email_tx, _) = broadcast::channel::<Email>(100);
     
+    // Start email retention cleanup task if configured
+    if let Some(retention_hours) = config.email_retention_hours {
+        info!("📅 Email retention enabled: emails older than {} hours will be deleted", retention_hours);
+        let storage_clone = storage.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Run every hour
+            loop {
+                interval.tick().await;
+                match storage_clone.delete_old_emails(retention_hours).await {
+                    Ok(count) => {
+                        if count > 0 {
+                            info!("🗑️  Email retention cleanup: deleted {} old email(s)", count);
+                        }
+                    }
+                    Err(e) => {
+                        error!("❌ Email retention cleanup failed: {}", e);
+                    }
+                }
+            }
+        });
+    } else {
+        info!("📅 Email retention disabled: emails will be kept indefinitely");
+    }
+    
     // Start SMTP servers (non-TLS always, plus SSL ports if enabled)
     info!("📧 Starting SMTP servers...");
     let smtp_server = Arc::new(smtp::SmtpServer::new(

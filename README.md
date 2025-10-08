@@ -10,6 +10,7 @@ A lightweight, temporary mail server that accepts emails to any address with a m
 🎨 **Modern UI** - Clean, responsive web interface  
 🚀 **Lightweight** - Minimal dependencies, fast performance  
 📱 **No Registration** - Just enter any email address to view messages  
+🗑️ **Auto-Cleanup** - Configurable email retention with automatic deletion  
 
 ## Quick Start
 
@@ -61,6 +62,7 @@ Key configuration options:
 | `SMTP_SSL_ENABLED` | false | Enable Let's Encrypt SSL for SMTP |
 | `SMTP_SSL_CERT_PATH` | - | Path to SSL certificate (fullchain.pem) |
 | `SMTP_SSL_KEY_PATH` | - | Path to SSL private key (privkey.pem) |
+| `EMAIL_RETENTION_HOURS` | - | Auto-delete emails older than X hours (optional) |
 | `RUST_LOG` | info | Log level (trace, debug, info, warn, error) |
 
 **Note**: When `SMTP_SSL_ENABLED=true`, the server listens on **three ports**:
@@ -213,6 +215,7 @@ swaks --to user@test.com \
 For detailed guides and technical documentation, see the `/docs` folder:
 
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Comprehensive reference for all configuration options
+- **[Email Retention](docs/EMAIL_RETENTION.md)** - Automatic email cleanup and retention policies
 - **[Let's Encrypt Setup](docs/LETSENCRYPT_SETUP.md)** - Step-by-step guide for SSL/TLS configuration
 - **[Port Configuration](docs/PORTS_CONFIGURATION.md)** - Detailed SMTP port configuration options
 - **[Domain Normalization](docs/BACKEND_DOMAIN_NORMALIZATION.md)** - Technical details on address handling
@@ -226,7 +229,7 @@ For detailed guides and technical documentation, see the `/docs` folder:
 - [ ] API authentication
 - [ ] Docker containerization
 - [ ] Rate limiting
-- [ ] Auto-expire old emails
+- [x] Auto-expire old emails (implemented via EMAIL_RETENTION_HOURS)
 
 ## License
 
