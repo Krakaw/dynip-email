@@ -1,0 +1,56 @@
+[Unit]
+Description=DynIP Email Server - Temporary Email Service
+Documentation=https://github.com/your-username/dynip-email
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=dynip-email
+Group=dynip-email
+WorkingDirectory=/opt/dynip-email
+ExecStart=/opt/dynip-email/dynip-email
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dynip-email
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/dynip-email/data
+ReadWritePaths=/var/lib/dynip-email
+ReadOnlyPaths=/opt/dynip-email
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Environment variables
+Environment=RUST_LOG=info
+Environment=SMTP_PORT=2525
+Environment=SMTP_STARTTLS_PORT=587
+Environment=SMTP_SSL_PORT=465
+Environment=API_PORT=3000
+Environment=DATABASE_URL=sqlite:/var/lib/dynip-email/emails.db
+Environment=DOMAIN_NAME=tempmail.local
+Environment=REJECT_NON_DOMAIN_EMAILS=false
+Environment=SMTP_SSL_ENABLED=false
+Environment=EMAIL_RETENTION_HOURS=24
+
+# Optional SSL configuration (uncomment and configure as needed)
+# Environment=SMTP_SSL_ENABLED=true
+# Environment=SMTP_SSL_CERT_PATH=/etc/letsencrypt/live/mail.yourdomain.com/fullchain.pem
+# Environment=SMTP_SSL_KEY_PATH=/etc/letsencrypt/live/mail.yourdomain.com/privkey.pem
+
+# Graceful shutdown
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
