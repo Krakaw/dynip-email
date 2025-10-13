@@ -47,3 +47,11 @@ tokio-rustls = "0.26"
 
 # HTTP client for webhooks
 reqwest = { version = "0.12", features = ["json"] }
+
+[dev-dependencies]
+# Testing utilities
+tokio-test = "0.4"
+mockito = "1.0"
+tempfile = "3.0"
+hyper = "1.0"
+tower = { version = "0.4", features = ["util"] }

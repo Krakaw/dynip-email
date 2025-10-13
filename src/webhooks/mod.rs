@@ -243,4 +243,138 @@ mod tests {
         assert_eq!(WebhookEvent::from_str("read"), Some(WebhookEvent::Read));
         assert_eq!(WebhookEvent::from_str("invalid"), None);
     }
+
+    #[tokio::test]
+    async fn test_webhook_http_delivery_success() {
+        use mockito::{Server, Mock};
+        
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/webhook")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .create_async()
+            .await;
+
+        let webhook_url = format!("{}/webhook", server.url());
+        let webhook = Webhook::new(
+            "test".to_string(),
+            webhook_url,
+            vec![WebhookEvent::Arrival],
+        );
+
+        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let trigger = WebhookTrigger::new(storage);
+
+        let result = trigger.test_webhook(&webhook).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        _mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_webhook_http_delivery_failure() {
+        use mockito::{Server, Mock};
+        
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/webhook")
+            .with_status(500)
+            .create_async()
+            .await;
+
+        let webhook_url = format!("{}/webhook", server.url());
+        let webhook = Webhook::new(
+            "test".to_string(),
+            webhook_url,
+            vec![WebhookEvent::Arrival],
+        );
+
+        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let trigger = WebhookTrigger::new(storage);
+
+        let result = trigger.test_webhook(&webhook).await;
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+
+        _mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_webhook_http_delivery_timeout() {
+        use mockito::{Server, Mock};
+        
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/webhook")
+            .with_status(200)
+            .create_async()
+            .await;
+
+        let webhook_url = format!("{}/webhook", server.url());
+        let webhook = Webhook::new(
+            "test".to_string(),
+            webhook_url,
+            vec![WebhookEvent::Arrival],
+        );
+
+        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let trigger = WebhookTrigger::new(storage);
+
+        let result = trigger.test_webhook(&webhook).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        _mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_webhook_payload_without_email() {
+        let webhook = Webhook::new(
+            "test".to_string(),
+            "http://localhost:3009".to_string(),
+            vec![WebhookEvent::Deletion],
+        );
+
+        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let trigger = WebhookTrigger::new(storage);
+        let payload = trigger.create_webhook_payload(&WebhookEvent::Deletion, None, &webhook);
+
+        assert_eq!(payload["event"], "deletion");
+        assert_eq!(payload["mailbox"], "test");
+        assert_eq!(payload["webhook_id"], webhook.id);
+        assert!(payload["email"].is_null());
+        assert!(payload["timestamp"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_payload_with_email() {
+        let webhook = Webhook::new(
+            "test".to_string(),
+            "http://localhost:3009".to_string(),
+            vec![WebhookEvent::Arrival],
+        );
+
+        let email = Email::new(
+            "test@example.com".to_string(),
+            "sender@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Test body".to_string(),
+            None,
+            vec![],
+        );
+
+        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let trigger = WebhookTrigger::new(storage);
+        let payload = trigger.create_webhook_payload(&WebhookEvent::Arrival, Some(&email), &webhook);
+
+        assert_eq!(payload["event"], "arrival");
+        assert_eq!(payload["mailbox"], "test");
+        assert_eq!(payload["webhook_id"], webhook.id);
+        assert!(payload["email"].is_object());
+        assert_eq!(payload["email"]["id"], email.id);
+        assert_eq!(payload["email"]["subject"], "Test Subject");
+        assert!(payload["timestamp"].is_string());
+    }
 }

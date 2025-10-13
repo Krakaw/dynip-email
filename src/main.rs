@@ -5,6 +5,9 @@ mod smtp;
 mod storage;
 mod webhooks;
 
+#[cfg(test)]
+mod integration_tests;
+
 use anyhow::Result;
 use config::Config;
 use std::sync::Arc;

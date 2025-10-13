@@ -307,4 +307,325 @@ mod tests {
         // Test with domain only
         assert_eq!(config.normalize_address("@example.com"), "@example.com");
     }
+
+    #[tokio::test]
+    async fn test_create_webhook_success() {
+        use crate::storage::sqlite::SqliteBackend;
+        use tempfile::tempdir;
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode},
+            routing::{get, post, put, delete},
+            Router,
+        };
+        use tower::util::ServiceExt;
+        
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
+        
+        let app = Router::new()
+            .route("/api/webhooks", post(create_webhook))
+            .with_state(storage);
+        
+        let request_body = json!({
+            "mailbox_address": "test@example.com",
+            "webhook_url": "http://localhost:3009",
+            "events": ["arrival", "deletion"]
+        });
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/webhooks")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::OK);
+        
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let webhook: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        
+        assert_eq!(webhook["mailbox_address"], "test");
+        assert_eq!(webhook["webhook_url"], "http://localhost:3009");
+        assert!(webhook["events"].as_array().unwrap().contains(&json!("Arrival")));
+        assert!(webhook["events"].as_array().unwrap().contains(&json!("Deletion")));
+    }
+
+    #[tokio::test]
+    async fn test_create_webhook_invalid_events() {
+        use crate::storage::sqlite::SqliteBackend;
+        use tempfile::tempdir;
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode},
+            routing::{get, post, put, delete},
+            Router,
+        };
+        use tower::util::ServiceExt;
+        
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
+        
+        let app = Router::new()
+            .route("/api/webhooks", post(create_webhook))
+            .with_state(storage);
+        
+        let request_body = json!({
+            "mailbox_address": "test@example.com",
+            "webhook_url": "http://localhost:3009",
+            "events": ["invalid_event"]
+        });
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/webhooks")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_get_webhooks_for_mailbox() {
+        use crate::storage::sqlite::SqliteBackend;
+        use tempfile::tempdir;
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode},
+            routing::{get, post, put, delete},
+            Router,
+        };
+        use tower::util::ServiceExt;
+        
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
+        
+        // Create a test webhook first
+        let webhook = Webhook::new(
+            "test".to_string(),
+            "http://localhost:3009".to_string(),
+            vec![WebhookEvent::Arrival],
+        );
+        storage.create_webhook(webhook).await.unwrap();
+        
+        let app = Router::new()
+            .route("/api/webhooks/:address", get(get_webhooks_for_mailbox))
+            .with_state(storage);
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/webhooks/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::OK);
+        
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        
+        assert!(result["webhooks"].as_array().unwrap().len() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_webhook_by_id() {
+        use crate::storage::sqlite::SqliteBackend;
+        use tempfile::tempdir;
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode},
+            routing::{get, post, put, delete},
+            Router,
+        };
+        use tower::util::ServiceExt;
+        
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
+        
+        // Create a test webhook first
+        let webhook = Webhook::new(
+            "test".to_string(),
+            "http://localhost:3009".to_string(),
+            vec![WebhookEvent::Arrival],
+        );
+        let webhook_id = webhook.id.clone();
+        storage.create_webhook(webhook).await.unwrap();
+        
+        let app = Router::new()
+            .route("/api/webhook/:id", get(get_webhook_by_id))
+            .with_state(storage);
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(&format!("/api/webhook/{}", webhook_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::OK);
+        
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        
+        assert_eq!(result["id"], webhook_id);
+    }
+
+    #[tokio::test]
+    async fn test_get_webhook_by_id_not_found() {
+        use crate::storage::sqlite::SqliteBackend;
+        use tempfile::tempdir;
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode},
+            routing::{get, post, put, delete},
+            Router,
+        };
+        use tower::util::ServiceExt;
+        
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
+        
+        let app = Router::new()
+            .route("/api/webhook/:id", get(get_webhook_by_id))
+            .with_state(storage);
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/webhook/nonexistent-id")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_update_webhook() {
+        use crate::storage::sqlite::SqliteBackend;
+        use tempfile::tempdir;
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode},
+            routing::{get, post, put, delete},
+            Router,
+        };
+        use tower::util::ServiceExt;
+        
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
+        
+        // Create a test webhook first
+        let webhook = Webhook::new(
+            "test".to_string(),
+            "http://localhost:3009".to_string(),
+            vec![WebhookEvent::Arrival],
+        );
+        let webhook_id = webhook.id.clone();
+        storage.create_webhook(webhook).await.unwrap();
+        
+        let app = Router::new()
+            .route("/api/webhook/:id", put(update_webhook))
+            .with_state(storage);
+        
+        let request_body = json!({
+            "webhook_url": "http://localhost:3010",
+            "events": ["deletion"]
+        });
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(&format!("/api/webhook/{}", webhook_id))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::OK);
+        
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        
+        assert_eq!(result["webhook_url"], "http://localhost:3010");
+        assert!(result["events"].as_array().unwrap().contains(&json!("Deletion")));
+    }
+
+    #[tokio::test]
+    async fn test_delete_webhook() {
+        use crate::storage::sqlite::SqliteBackend;
+        use tempfile::tempdir;
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode},
+            routing::{get, post, put, delete},
+            Router,
+        };
+        use tower::util::ServiceExt;
+        
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
+        
+        // Create a test webhook first
+        let webhook = Webhook::new(
+            "test".to_string(),
+            "http://localhost:3009".to_string(),
+            vec![WebhookEvent::Arrival],
+        );
+        let webhook_id = webhook.id.clone();
+        storage.create_webhook(webhook).await.unwrap();
+        
+        let app = Router::new()
+            .route("/api/webhook/:id", delete(delete_webhook))
+            .with_state(storage.clone());
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!("/api/webhook/{}", webhook_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::OK);
+        
+        // Verify webhook was deleted
+        let result = storage.get_webhook_by_id(&webhook_id).await.unwrap();
+        assert!(result.is_none());
+    }
 }

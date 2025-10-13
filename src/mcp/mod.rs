@@ -260,6 +260,11 @@ impl EmailMcpServer {
 mod tests {
     use super::*;
     use crate::storage::sqlite::SqliteBackend;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use tower::util::ServiceExt;
 
     #[tokio::test]
     async fn test_mcp_server_creation() {
@@ -268,5 +273,192 @@ mod tests {
         
         // Test that server can be created
         assert!(true);
+    }
+
+    #[tokio::test]
+    async fn test_mcp_server_info() {
+        
+        let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let server = EmailMcpServer::new(storage);
+        let app = server.create_router();
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::OK);
+        
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let info: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        
+        assert_eq!(info["name"], "dynip-email-mcp");
+        assert_eq!(info["version"], "1.0.0");
+        assert!(info["capabilities"]["tools"].as_bool().unwrap());
+        assert!(info["capabilities"]["resources"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_mcp_list_tools() {
+        
+        let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let server = EmailMcpServer::new(storage);
+        let app = server.create_router();
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/tools")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::OK);
+        
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let tools: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        
+        assert!(tools["tools"].is_array());
+        let tools_array = tools["tools"].as_array().unwrap();
+        assert!(tools_array.len() >= 4); // list_emails, read_email, create_webhook, list_webhooks
+        
+        // Check for specific tools
+        let tool_names: Vec<&str> = tools_array
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
+        
+        assert!(tool_names.contains(&"list_emails"));
+        assert!(tool_names.contains(&"read_email"));
+        assert!(tool_names.contains(&"create_webhook"));
+        assert!(tool_names.contains(&"list_webhooks"));
+    }
+
+    #[tokio::test]
+    async fn test_mcp_list_resources() {
+        
+        let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let server = EmailMcpServer::new(storage);
+        let app = server.create_router();
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/resources")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::OK);
+        
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let resources: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        
+        assert!(resources["resources"].is_array());
+        let resources_array = resources["resources"].as_array().unwrap();
+        assert!(resources_array.len() >= 2); // email://, webhook://
+        
+        // Check for specific resources
+        let resource_uris: Vec<&str> = resources_array
+            .iter()
+            .map(|r| r["uri"].as_str().unwrap())
+            .collect();
+        
+        assert!(resource_uris.contains(&"email://*"));
+        assert!(resource_uris.contains(&"webhook://*"));
+    }
+
+    #[tokio::test]
+    async fn test_mcp_call_tool_list_emails() {
+        
+        let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let server = EmailMcpServer::new(storage);
+        let app = server.create_router();
+        
+        let request_body = json!({
+            "mailbox": "test"
+        });
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/tools/list_emails")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::OK);
+        
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        
+        assert!(result["emails"].is_array());
+        assert_eq!(result["count"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_mcp_call_tool_invalid_tool() {
+        
+        let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let server = EmailMcpServer::new(storage);
+        let app = server.create_router();
+        
+        let request_body = json!({
+            "mailbox": "test"
+        });
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/tools/invalid_tool")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_mcp_call_tool_missing_parameters() {
+        
+        let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let server = EmailMcpServer::new(storage);
+        let app = server.create_router();
+        
+        let request_body = json!({});
+        
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/tools/list_emails")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }
