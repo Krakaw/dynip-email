@@ -1,7 +1,9 @@
 mod api;
 mod config;
+mod mcp;
 mod smtp;
 mod storage;
+mod webhooks;
 
 use anyhow::Result;
 use config::Config;
@@ -11,7 +13,9 @@ use tokio::sync::broadcast;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use storage::{models::Email, sqlite::SqliteBackend, StorageBackend};
+use storage::{models::{Email, WebhookEvent}, sqlite::SqliteBackend, StorageBackend};
+use webhooks::WebhookTrigger;
+use mcp::EmailMcpServer;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -40,6 +44,7 @@ async fn main() -> Result<()> {
         );
         let storage_clone = storage.clone();
         let deletion_tx_clone = deletion_tx.clone();
+        let webhook_trigger = WebhookTrigger::new(storage.clone());
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Run every hour
             loop {
@@ -58,7 +63,14 @@ async fn main() -> Result<()> {
                             // Send deletion notifications for each deleted email
                             for (email_id, address) in deleted_emails {
                                 info!("📤 Broadcasting deletion notification for email {} to address {}", email_id, address);
-                                let _ = deletion_tx_clone.send((email_id, address));
+                                let _ = deletion_tx_clone.send((email_id.clone(), address.clone()));
+                                
+                                // Trigger webhooks for email deletion
+                                // Extract mailbox name without domain for webhook lookup
+                                let mailbox_name = address.split('@').next().unwrap_or(&address);
+                                if let Err(e) = webhook_trigger.trigger_webhooks(mailbox_name, WebhookEvent::Deletion, None).await {
+                                    error!("Failed to trigger deletion webhooks: {}", e);
+                                }
                             }
                         }
                     }
@@ -117,6 +129,20 @@ async fn main() -> Result<()> {
         deletion_tx,
         config.domain_name.clone(),
     );
+
+    // Start MCP server if enabled
+    if config.mcp_enabled {
+        info!("🔌 Starting MCP server on port {}...", config.mcp_port);
+        let mcp_server = EmailMcpServer::new(storage.clone());
+        let mcp_port = config.mcp_port;
+        tokio::spawn(async move {
+            if let Err(e) = mcp_server.start(mcp_port).await {
+                error!("❌ MCP server error: {}", e);
+            }
+        });
+    } else {
+        info!("🔌 MCP server disabled");
+    }
 
     // Start API server
     info!("🚀 Starting API server on port {}...", config.api_port);
@@ -247,6 +273,8 @@ mod tests {
             email_retention_hours,
             reject_non_domain_emails,
             smtp_ssl,
+            mcp_enabled: false,
+            mcp_port: 3001,
         })
     }
 

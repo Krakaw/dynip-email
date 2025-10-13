@@ -1,7 +1,7 @@
 pub mod handlers;
 pub mod websocket;
 
-use axum::{routing::get, Router};
+use axum::{routing::{get, post, put, delete}, Router};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tower_http::{
@@ -11,7 +11,11 @@ use tower_http::{
 use tracing::info;
 
 use crate::storage::{models::Email, StorageBackend};
-use handlers::{get_email_by_id, get_emails_for_address, AppConfig};
+use handlers::{
+    get_email_by_id, get_emails_for_address, AppConfig,
+    create_webhook, get_webhooks_for_mailbox, get_webhook_by_id,
+    update_webhook, delete_webhook, test_webhook
+};
 use websocket::{websocket_handler, WsState};
 
 /// Build the API router
@@ -41,6 +45,19 @@ pub fn create_router(
         .with_state(combined_state)
         // Email by ID doesn't need domain normalization
         .route("/api/email/:id", get(get_email_by_id))
+        .with_state(storage.clone())
+        // Webhook routes
+        .route("/api/webhooks", post(create_webhook))
+        .with_state(storage.clone())
+        .route("/api/webhooks/:address", get(get_webhooks_for_mailbox))
+        .with_state(storage.clone())
+        .route("/api/webhook/:id", get(get_webhook_by_id))
+        .with_state(storage.clone())
+        .route("/api/webhook/:id", put(update_webhook))
+        .with_state(storage.clone())
+        .route("/api/webhook/:id", delete(delete_webhook))
+        .with_state(storage.clone())
+        .route("/api/webhook/:id/test", post(test_webhook))
         .with_state(storage)
         // Serve static files
         .nest_service("/", ServeDir::new("static"))

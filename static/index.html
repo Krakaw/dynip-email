@@ -39,10 +39,21 @@
 
         <div class="main-content">
             <div class="email-list-panel">
-                <h2>Inbox</h2>
+                <div class="panel-header">
+                    <h2>Inbox</h2>
+                    <div class="tab-buttons">
+                        <button id="inboxTab" class="tab-button active">Emails</button>
+                        <button id="webhooksTab" class="tab-button">Webhooks</button>
+                    </div>
+                </div>
                 <div id="emailList" class="email-list">
                     <div class="empty-state">
                         <p>👋 Enter an email address to view messages</p>
+                    </div>
+                </div>
+                <div id="webhookList" class="webhook-list" style="display: none;">
+                    <div class="empty-state">
+                        <p>🔗 No webhooks configured for this mailbox</p>
                     </div>
                 </div>
             </div>

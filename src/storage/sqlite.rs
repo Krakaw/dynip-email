@@ -5,7 +5,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::str::FromStr;
 use tracing::{info, warn};
 
-use super::{models::Email, StorageBackend};
+use super::{models::{Email, Webhook, WebhookEvent}, StorageBackend};
 
 /// SQLite implementation of StorageBackend
 pub struct SqliteBackend {
@@ -56,6 +56,31 @@ impl SqliteBackend {
         sqlx::query(
             r#"
             CREATE INDEX IF NOT EXISTS idx_timestamp ON emails(timestamp)
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create webhooks table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS webhooks (
+                id TEXT PRIMARY KEY,
+                mailbox_address TEXT NOT NULL,
+                webhook_url TEXT NOT NULL,
+                events TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                enabled BOOLEAN DEFAULT 1
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create index on mailbox_address for faster webhook queries
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_webhooks_mailbox ON webhooks(mailbox_address)
             "#,
         )
         .execute(&pool)
@@ -241,6 +266,207 @@ impl StorageBackend for SqliteBackend {
         }
 
         Ok(deleted_emails)
+    }
+
+    async fn create_webhook(&self, webhook: Webhook) -> Result<()> {
+        // Serialize events to JSON
+        let events_json = serde_json::to_string(&webhook.events)?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO webhooks (id, mailbox_address, webhook_url, events, created_at, enabled)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&webhook.id)
+        .bind(&webhook.mailbox_address)
+        .bind(&webhook.webhook_url)
+        .bind(&events_json)
+        .bind(webhook.created_at.to_rfc3339())
+        .bind(webhook.enabled)
+        .execute(&self.pool)
+        .await?;
+
+        info!(
+            "Created webhook {} for mailbox {} with {} events",
+            webhook.id,
+            webhook.mailbox_address,
+            webhook.events.len()
+        );
+        Ok(())
+    }
+
+    async fn get_webhooks_for_mailbox(&self, address: &str) -> Result<Vec<Webhook>> {
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                String,
+                bool,
+            ),
+        >(
+            r#"
+            SELECT id, mailbox_address, webhook_url, events, created_at, enabled
+            FROM webhooks
+            WHERE mailbox_address = ?
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(address)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let webhooks = rows
+            .into_iter()
+            .map(|(id, mailbox_address, webhook_url, events_json, created_at, enabled)| {
+                let created_at = DateTime::parse_from_rfc3339(&created_at)
+                    .unwrap_or_else(|_| Utc::now().into())
+                    .with_timezone(&Utc);
+
+                // Deserialize events from JSON
+                let events = serde_json::from_str(&events_json).unwrap_or_default();
+
+                Webhook {
+                    id,
+                    mailbox_address,
+                    webhook_url,
+                    events,
+                    created_at,
+                    enabled,
+                }
+            })
+            .collect();
+
+        Ok(webhooks)
+    }
+
+    async fn get_webhook_by_id(&self, id: &str) -> Result<Option<Webhook>> {
+        let row = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                String,
+                bool,
+            ),
+        >(
+            r#"
+            SELECT id, mailbox_address, webhook_url, events, created_at, enabled
+            FROM webhooks
+            WHERE id = ?
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(id, mailbox_address, webhook_url, events_json, created_at, enabled)| {
+            let created_at = DateTime::parse_from_rfc3339(&created_at)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc);
+
+            // Deserialize events from JSON
+            let events = serde_json::from_str(&events_json).unwrap_or_default();
+
+            Webhook {
+                id,
+                mailbox_address,
+                webhook_url,
+                events,
+                created_at,
+                enabled,
+            }
+        }))
+    }
+
+    async fn update_webhook(&self, webhook: Webhook) -> Result<()> {
+        // Serialize events to JSON
+        let events_json = serde_json::to_string(&webhook.events)?;
+
+        sqlx::query(
+            r#"
+            UPDATE webhooks
+            SET mailbox_address = ?, webhook_url = ?, events = ?, enabled = ?
+            WHERE id = ?
+            "#,
+        )
+        .bind(&webhook.mailbox_address)
+        .bind(&webhook.webhook_url)
+        .bind(&events_json)
+        .bind(webhook.enabled)
+        .bind(&webhook.id)
+        .execute(&self.pool)
+        .await?;
+
+        info!("Updated webhook {}", webhook.id);
+        Ok(())
+    }
+
+    async fn delete_webhook(&self, id: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            DELETE FROM webhooks
+            WHERE id = ?
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        info!("Deleted webhook {}", id);
+        Ok(())
+    }
+
+    async fn get_active_webhooks_for_event(&self, address: &str, event: WebhookEvent) -> Result<Vec<Webhook>> {
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                String,
+                bool,
+            ),
+        >(
+            r#"
+            SELECT id, mailbox_address, webhook_url, events, created_at, enabled
+            FROM webhooks
+            WHERE mailbox_address = ? AND enabled = 1
+            "#,
+        )
+        .bind(address)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let webhooks = rows
+            .into_iter()
+            .map(|(id, mailbox_address, webhook_url, events_json, created_at, enabled)| {
+                let created_at = DateTime::parse_from_rfc3339(&created_at)
+                    .unwrap_or_else(|_| Utc::now().into())
+                    .with_timezone(&Utc);
+
+                // Deserialize events from JSON
+                let events = serde_json::from_str(&events_json).unwrap_or_default();
+
+                Webhook {
+                    id,
+                    mailbox_address,
+                    webhook_url,
+                    events,
+                    created_at,
+                    enabled,
+                }
+            })
+            .filter(|webhook| webhook.events.contains(&event))
+            .collect();
+
+        Ok(webhooks)
     }
 }
 

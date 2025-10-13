@@ -7,11 +7,13 @@ A lightweight, temporary mail server that accepts emails to any address with a m
 ✨ **Accept All Emails** - No validation, accepts emails to any address  
 🔄 **Real-time Updates** - WebSocket integration for instant email notifications  
 💾 **Flexible Storage** - Swappable backend storage (SQLite by default)  
-🎨 **Modern UI** - Clean, responsive web interface  
+🎨 **Modern UI** - Clean, responsive web interface with webhook management  
 🚀 **Lightweight** - Minimal dependencies, fast performance  
 📱 **No Registration** - Just enter any email address to view messages  
 🗑️ **Auto-Cleanup** - Configurable email retention with automatic deletion  
 🔔 **Live Notifications** - Real-time WebSocket updates for email deletions  
+🔗 **Webhook Support** - Per-mailbox webhook events for email arrivals, deletions, and reads  
+🤖 **MCP Integration** - Model Context Protocol server for LLM/AI assistant integration  
 
 ## Quick Start
 
@@ -223,6 +225,12 @@ print('Email sent!')
 
 - `GET /api/emails/:address` - Get all emails for an address
 - `GET /api/email/:id` - Get a specific email by ID
+- `POST /api/webhooks` - Create a new webhook
+- `GET /api/webhooks/:address` - List webhooks for a mailbox
+- `GET /api/webhook/:id` - Get webhook details
+- `PUT /api/webhook/:id` - Update webhook
+- `DELETE /api/webhook/:id` - Delete webhook
+- `POST /api/webhook/:id/test` - Test webhook
 
 Example:
 ```bash
@@ -241,6 +249,66 @@ ws.onmessage = (event) => {
     console.log('New email:', email);
 };
 ```
+
+## Webhook Integration
+
+Configure webhooks to receive real-time notifications for email events:
+
+### Supported Events
+- **Email Arrival**: When a new email is received
+- **Email Deletion**: When an email is deleted (retention policy)
+- **Email Read**: When an email is viewed (optional)
+
+### Webhook Configuration
+1. Navigate to the web interface
+2. Enter an email address to load the mailbox
+3. Click the "Webhooks" tab
+4. Add webhook URLs and select events
+5. Test webhooks to verify delivery
+
+### Webhook Payload Example
+```json
+{
+  "event": "arrival",
+  "mailbox": "user@example.com",
+  "webhook_id": "webhook-uuid",
+  "timestamp": "2024-01-01T00:00:00Z",
+  "email": {
+    "id": "email-uuid",
+    "to": "user@example.com",
+    "from": "sender@example.com",
+    "subject": "Email Subject",
+    "body": "Email content",
+    "timestamp": "2024-01-01T00:00:00Z",
+    "attachments": 0
+  }
+}
+```
+
+## MCP (Model Context Protocol) Integration
+
+Enable AI assistant integration with the MCP server:
+
+### Configuration
+```bash
+MCP_ENABLED=true
+MCP_PORT=3001
+```
+
+### MCP Tools Available
+- `list_emails` - List emails for a mailbox
+- `read_email` - Get email by ID
+- `delete_email` - Delete email by ID
+- `create_webhook` - Create webhook for mailbox
+- `list_webhooks` - List webhooks for mailbox
+- `delete_webhook` - Delete webhook
+- `test_webhook` - Test webhook delivery
+
+### MCP Resources
+- `email://{email_id}` - Access email content
+- `webhook://{webhook_id}` - Access webhook configuration
+
+See [MCP Integration Guide](docs/MCP_INTEGRATION.md) for detailed usage.
 
 ## Architecture
 

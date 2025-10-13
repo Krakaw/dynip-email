@@ -3,16 +3,21 @@ let currentAddress = '';
 let websocket = null;
 let emails = [];
 let selectedEmailId = null;
+let webhooks = [];
+let currentTab = 'emails';
 
 // DOM elements
 const emailAddressInput = document.getElementById('emailAddress');
 const loadEmailsBtn = document.getElementById('loadEmails');
 const emailList = document.getElementById('emailList');
+const webhookList = document.getElementById('webhookList');
 const emailDetail = document.getElementById('emailDetail');
 const connectionStatus = document.getElementById('connectionStatus');
 const emailCount = document.getElementById('emailCount');
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon = document.getElementById('themeIcon');
+const inboxTab = document.getElementById('inboxTab');
+const webhooksTab = document.getElementById('webhooksTab');
 
 // Event listeners
 loadEmailsBtn.addEventListener('click', loadInbox);
@@ -20,6 +25,8 @@ emailAddressInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') loadInbox();
 });
 themeToggle.addEventListener('click', toggleTheme);
+inboxTab.addEventListener('click', () => switchTab('emails'));
+webhooksTab.addEventListener('click', () => switchTab('webhooks'));
 
 // Theme management
 function initTheme() {
@@ -101,6 +108,9 @@ async function loadInbox() {
         
         // Connect WebSocket
         connectWebSocket(address);
+        
+        // Load webhooks for this address
+        loadWebhooks(address);
     } catch (error) {
         console.error('Failed to load emails:', error);
         emailList.innerHTML = '<div class="empty-state"><p>❌ Failed to load emails</p></div>';
@@ -418,5 +428,284 @@ function formatFileSize(bytes) {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Tab switching
+function switchTab(tab) {
+    currentTab = tab;
+    
+    if (tab === 'emails') {
+        inboxTab.classList.add('active');
+        webhooksTab.classList.remove('active');
+        emailList.style.display = 'block';
+        webhookList.style.display = 'none';
+    } else if (tab === 'webhooks') {
+        webhooksTab.classList.add('active');
+        inboxTab.classList.remove('active');
+        emailList.style.display = 'none';
+        webhookList.style.display = 'block';
+    }
+}
+
+// Load webhooks for current address
+async function loadWebhooks(address) {
+    if (!address) return;
+    
+    try {
+        const response = await fetch(`/api/webhooks/${encodeURIComponent(address)}`);
+        const data = await response.json();
+        
+        webhooks = data.webhooks || [];
+        displayWebhooks(webhooks);
+    } catch (error) {
+        console.error('Failed to load webhooks:', error);
+        webhookList.innerHTML = '<div class="empty-state"><p>❌ Failed to load webhooks</p></div>';
+    }
+}
+
+// Display webhooks
+function displayWebhooks(webhooksToDisplay) {
+    if (webhooksToDisplay.length === 0) {
+        webhookList.innerHTML = `
+            <div class="empty-state">
+                <p>🔗 No webhooks configured for this mailbox</p>
+                <button class="btn-primary" onclick="showAddWebhookForm()">Add Webhook</button>
+            </div>
+        `;
+        return;
+    }
+    
+    webhookList.innerHTML = `
+        <div class="webhook-header">
+            <h3>Webhooks (${webhooksToDisplay.length})</h3>
+            <button class="btn-primary" onclick="showAddWebhookForm()">Add Webhook</button>
+        </div>
+        <div class="webhook-items">
+            ${webhooksToDisplay.map(webhook => `
+                <div class="webhook-item">
+                    <div class="webhook-info">
+                        <div class="webhook-url">${escapeHtml(webhook.webhook_url)}</div>
+                        <div class="webhook-events">
+                            Events: ${webhook.events.map(e => e.charAt(0).toUpperCase() + e.slice(1)).join(', ')}
+                        </div>
+                        <div class="webhook-status">
+                            Status: <span class="status-${webhook.enabled ? 'enabled' : 'disabled'}">${webhook.enabled ? 'Enabled' : 'Disabled'}</span>
+                        </div>
+                    </div>
+                    <div class="webhook-actions">
+                        <button class="btn-secondary" onclick="testWebhook('${webhook.id}')">Test</button>
+                        <button class="btn-secondary" onclick="editWebhook('${webhook.id}')">Edit</button>
+                        <button class="btn-danger" onclick="deleteWebhook('${webhook.id}')">Delete</button>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Show add webhook form
+function showAddWebhookForm() {
+    const formHtml = `
+        <div class="webhook-form">
+            <h3>Add New Webhook</h3>
+            <form id="addWebhookForm">
+                <div class="form-group">
+                    <label for="webhookUrl">Webhook URL:</label>
+                    <input type="url" id="webhookUrl" placeholder="http://localhost:3009 or https://example.com/webhook" required>
+                    <small style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem; display: block;">
+                        Enter the full URL including protocol (http:// or https://). For local testing, use http://localhost:PORT
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label>Events to trigger:</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" name="events" value="arrival" checked> Email Arrival</label>
+                        <label><input type="checkbox" name="events" value="deletion"> Email Deletion</label>
+                        <label><input type="checkbox" name="events" value="read"> Email Read</label>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Create Webhook</button>
+                    <button type="button" class="btn-secondary" onclick="cancelAddWebhook()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    webhookList.innerHTML = formHtml;
+    
+    document.getElementById('addWebhookForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await createWebhook();
+    });
+}
+
+// Create webhook
+async function createWebhook() {
+    const url = document.getElementById('webhookUrl').value;
+    const eventCheckboxes = document.querySelectorAll('input[name="events"]:checked');
+    const events = Array.from(eventCheckboxes).map(cb => cb.value);
+    
+    if (events.length === 0) {
+        alert('Please select at least one event');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/webhooks', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                mailbox_address: currentAddress,
+                webhook_url: url,
+                events: events
+            })
+        });
+        
+        if (response.ok) {
+            await loadWebhooks(currentAddress);
+        } else {
+            const error = await response.text();
+            alert('Failed to create webhook: ' + error);
+        }
+    } catch (error) {
+        console.error('Failed to create webhook:', error);
+        alert('Failed to create webhook');
+    }
+}
+
+// Test webhook
+async function testWebhook(webhookId) {
+    try {
+        const response = await fetch(`/api/webhook/${webhookId}/test`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            alert('Webhook test successful!');
+        } else {
+            alert('Webhook test failed');
+        }
+    } catch (error) {
+        console.error('Failed to test webhook:', error);
+        alert('Failed to test webhook');
+    }
+}
+
+// Edit webhook
+function editWebhook(webhookId) {
+    const webhook = webhooks.find(w => w.id === webhookId);
+    if (!webhook) return;
+    
+    const formHtml = `
+        <div class="webhook-form">
+            <h3>Edit Webhook</h3>
+            <form id="editWebhookForm">
+                <div class="form-group">
+                    <label for="editWebhookUrl">Webhook URL:</label>
+                    <input type="url" id="editWebhookUrl" value="${escapeHtml(webhook.webhook_url)}" required>
+                    <small style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem; display: block;">
+                        Enter the full URL including protocol (http:// or https://). For local testing, use http://localhost:PORT
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label>Events to trigger:</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" name="editEvents" value="arrival" ${webhook.events.includes('arrival') ? 'checked' : ''}> Email Arrival</label>
+                        <label><input type="checkbox" name="editEvents" value="deletion" ${webhook.events.includes('deletion') ? 'checked' : ''}> Email Deletion</label>
+                        <label><input type="checkbox" name="editEvents" value="read" ${webhook.events.includes('read') ? 'checked' : ''}> Email Read</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="enabled" ${webhook.enabled ? 'checked' : ''}> Enabled
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Update Webhook</button>
+                    <button type="button" class="btn-secondary" onclick="cancelEditWebhook()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    webhookList.innerHTML = formHtml;
+    
+    document.getElementById('editWebhookForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await updateWebhook(webhookId);
+    });
+}
+
+// Update webhook
+async function updateWebhook(webhookId) {
+    const url = document.getElementById('editWebhookUrl').value;
+    const eventCheckboxes = document.querySelectorAll('input[name="editEvents"]:checked');
+    const events = Array.from(eventCheckboxes).map(cb => cb.value);
+    const enabled = document.querySelector('input[name="enabled"]').checked;
+    
+    if (events.length === 0) {
+        alert('Please select at least one event');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/webhook/${webhookId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                webhook_url: url,
+                events: events,
+                enabled: enabled
+            })
+        });
+        
+        if (response.ok) {
+            await loadWebhooks(currentAddress);
+        } else {
+            const error = await response.text();
+            alert('Failed to update webhook: ' + error);
+        }
+    } catch (error) {
+        console.error('Failed to update webhook:', error);
+        alert('Failed to update webhook');
+    }
+}
+
+// Delete webhook
+async function deleteWebhook(webhookId) {
+    if (!confirm('Are you sure you want to delete this webhook?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/webhook/${webhookId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            await loadWebhooks(currentAddress);
+        } else {
+            alert('Failed to delete webhook');
+        }
+    } catch (error) {
+        console.error('Failed to delete webhook:', error);
+        alert('Failed to delete webhook');
+    }
+}
+
+// Cancel add webhook
+function cancelAddWebhook() {
+    displayWebhooks(webhooks);
+}
+
+// Cancel edit webhook
+function cancelEditWebhook() {
+    displayWebhooks(webhooks);
 }
 

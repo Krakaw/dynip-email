@@ -44,3 +44,6 @@ dotenvy = "0.15"
 rustls = "0.23"
 rustls-pemfile = "2.0"
 tokio-rustls = "0.26"
+
+# HTTP client for webhooks
+reqwest = { version = "0.12", features = ["json"] }

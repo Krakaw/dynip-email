@@ -220,3 +220,70 @@ mod tests {
         assert_eq!(deserialized.content, attachment.content);
     }
 }
+
+/// Webhook event types
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum WebhookEvent {
+    Arrival,
+    Deletion,
+    Read,
+}
+
+impl WebhookEvent {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            WebhookEvent::Arrival => "arrival",
+            WebhookEvent::Deletion => "deletion",
+            WebhookEvent::Read => "read",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "arrival" => Some(WebhookEvent::Arrival),
+            "deletion" => Some(WebhookEvent::Deletion),
+            "read" => Some(WebhookEvent::Read),
+            _ => None,
+        }
+    }
+}
+
+/// Webhook configuration model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Webhook {
+    /// Unique identifier for the webhook
+    pub id: String,
+
+    /// Email address this webhook is for (without domain)
+    pub mailbox_address: String,
+
+    /// Target webhook URL
+    pub webhook_url: String,
+
+    /// Subscribed events
+    pub events: Vec<WebhookEvent>,
+
+    /// Creation timestamp
+    pub created_at: DateTime<Utc>,
+
+    /// Whether the webhook is enabled
+    pub enabled: bool,
+}
+
+impl Webhook {
+    /// Create a new webhook with generated UUID
+    pub fn new(
+        mailbox_address: String,
+        webhook_url: String,
+        events: Vec<WebhookEvent>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            mailbox_address,
+            webhook_url,
+            events,
+            created_at: Utc::now(),
+            enabled: true,
+        }
+    }
+}

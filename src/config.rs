@@ -16,6 +16,8 @@ pub struct Config {
     pub domain_name: String,
     pub email_retention_hours: Option<i64>,
     pub reject_non_domain_emails: bool,
+    pub mcp_enabled: bool,
+    pub mcp_port: u16,
 }
 
 /// SMTP SSL/TLS configuration for Let's Encrypt certificates
@@ -66,6 +68,15 @@ impl Config {
             .parse::<bool>()
             .unwrap_or(false);
 
+        let mcp_enabled = std::env::var("MCP_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+
+        let mcp_port = std::env::var("MCP_PORT")
+            .unwrap_or_else(|_| "3001".to_string())
+            .parse()?;
+
         // SMTP SSL configuration for Let's Encrypt
         let smtp_ssl_enabled = std::env::var("SMTP_SSL_ENABLED")
             .unwrap_or_else(|_| "false".to_string())
@@ -103,6 +114,8 @@ impl Config {
             domain_name,
             email_retention_hours,
             reject_non_domain_emails,
+            mcp_enabled,
+            mcp_port,
         })
     }
 }
@@ -220,6 +233,8 @@ mod tests {
             email_retention_hours,
             reject_non_domain_emails,
             smtp_ssl,
+            mcp_enabled: false,
+            mcp_port: 3001,
         })
     }
 
