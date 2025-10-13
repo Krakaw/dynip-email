@@ -223,6 +223,16 @@ mod tests {
             }
         };
 
+        let mcp_enabled = std::env::var("MCP_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+
+        let mcp_port = std::env::var("MCP_PORT")
+            .unwrap_or_else(|_| "3001".to_string())
+            .parse()
+            .unwrap_or(3001);
+
         Ok(Config {
             smtp_port,
             smtp_starttls_port,
@@ -233,8 +243,8 @@ mod tests {
             email_retention_hours,
             reject_non_domain_emails,
             smtp_ssl,
-            mcp_enabled: false,
-            mcp_port: 3001,
+            mcp_enabled,
+            mcp_port,
         })
     }
 
@@ -251,10 +261,8 @@ mod tests {
         env::remove_var("SMTP_SSL_ENABLED");
         env::remove_var("SMTP_SSL_CERT_PATH");
         env::remove_var("SMTP_SSL_KEY_PATH");
-
-        // Also clear any other potential env vars
-        env::remove_var("SMTP_SSL_CERT_PATH");
-        env::remove_var("SMTP_SSL_KEY_PATH");
+        env::remove_var("MCP_ENABLED");
+        env::remove_var("MCP_PORT");
     }
 
     #[test]
@@ -271,6 +279,8 @@ mod tests {
         assert_eq!(config.email_retention_hours, None);
         assert_eq!(config.reject_non_domain_emails, false);
         assert_eq!(config.smtp_ssl.enabled, false);
+        assert_eq!(config.mcp_enabled, false);
+        assert_eq!(config.mcp_port, 3001);
     }
 
     #[test]
@@ -288,6 +298,8 @@ mod tests {
         env::set_var("SMTP_SSL_ENABLED", "true");
         env::set_var("SMTP_SSL_CERT_PATH", "/path/to/cert.pem");
         env::set_var("SMTP_SSL_KEY_PATH", "/path/to/key.pem");
+        env::set_var("MCP_ENABLED", "true");
+        env::set_var("MCP_PORT", "3002");
 
         let config = from_env_test().unwrap();
 
@@ -308,6 +320,8 @@ mod tests {
             config.smtp_ssl.key_path,
             Some(std::path::PathBuf::from("/path/to/key.pem"))
         );
+        assert_eq!(config.mcp_enabled, true);
+        assert_eq!(config.mcp_port, 3002);
     }
 
     #[test]
