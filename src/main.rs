@@ -125,12 +125,16 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Create webhook trigger
+    let webhook_trigger = webhooks::WebhookTrigger::new(storage.clone());
+
     // Create API router
     let router = api::create_router(
         storage.clone(),
         email_tx,
         deletion_tx,
         config.domain_name.clone(),
+        webhook_trigger,
     );
 
     // Start MCP server if enabled

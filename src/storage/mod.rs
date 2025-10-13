@@ -18,6 +18,9 @@ pub trait StorageBackend: Send + Sync {
     /// Get a specific email by its ID
     async fn get_email_by_id(&self, id: &str) -> Result<Option<Email>>;
 
+    /// Delete a specific email by its ID
+    async fn delete_email(&self, id: &str) -> Result<()>;
+
     /// Delete old emails and return details of deleted emails
     async fn delete_old_emails_with_details(&self, hours: i64) -> Result<Vec<(String, String)>>;
 

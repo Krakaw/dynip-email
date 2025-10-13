@@ -63,6 +63,49 @@ pub async fn get_email_by_id(
     }
 }
 
+/// Delete email by ID
+pub async fn delete_email(
+    Path(id): Path<String>,
+    State((storage, webhook_trigger)): State<(Arc<dyn StorageBackend>, WebhookTrigger)>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    // First get the email to extract mailbox info for webhook
+    let email = match storage.get_email_by_id(&id).await {
+        Ok(Some(email)) => email,
+        Ok(None) => return Err((StatusCode::NOT_FOUND, "Email not found".to_string())),
+        Err(e) => return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to fetch email: {}", e),
+        )),
+    };
+
+    // Extract mailbox name (without domain) for webhook
+    let mailbox_name = if let Some(at_pos) = email.to.find('@') {
+        &email.to[..at_pos]
+    } else {
+        &email.to
+    };
+
+    // Delete the email
+    match storage.delete_email(&id).await {
+        Ok(_) => {
+            // Trigger webhook for deletion event
+            if let Err(e) = webhook_trigger.trigger_webhooks(
+                mailbox_name,
+                crate::storage::models::WebhookEvent::Deletion,
+                Some(&email),
+            ).await {
+                tracing::warn!("Failed to trigger deletion webhook: {}", e);
+            }
+
+            Ok(Json(json!({ "message": "Email deleted successfully" })))
+        }
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete email: {}", e),
+        )),
+    }
+}
+
 /// Create webhook request
 #[derive(Debug, Deserialize)]
 pub struct CreateWebhookRequest {

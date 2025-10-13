@@ -195,7 +195,14 @@ function showEmailDetail(emailId) {
     
     emailDetail.innerHTML = `
         <div class="email-header">
-            <h2 class="email-subject">${escapeHtml(email.subject)}</h2>
+            <div class="email-header-top">
+                <h2 class="email-subject">${escapeHtml(email.subject)}</h2>
+                <div class="email-actions">
+                    <button class="delete-email-btn" onclick="deleteEmail('${email.id}')" title="Delete Email">
+                        🗑️ Delete
+                    </button>
+                </div>
+            </div>
             <div class="email-meta">
                 <div class="email-meta-item">
                     <span class="email-meta-label">From:</span>
@@ -428,6 +435,45 @@ function formatFileSize(bytes) {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Delete email function
+async function deleteEmail(emailId) {
+    if (!confirm('Are you sure you want to delete this email? This action cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/email/${emailId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Remove email from local array
+        emails = emails.filter(email => email.id !== emailId);
+        
+        // Clear email detail if this was the selected email
+        if (selectedEmailId === emailId) {
+            selectedEmailId = null;
+            emailDetail.innerHTML = '<div class="no-email-selected">Select an email to view</div>';
+        }
+        
+        // Refresh email list
+        displayEmails(emails);
+        
+        // Show success message
+        showNotification('Email deleted successfully', 'success');
+        
+    } catch (error) {
+        console.error('Failed to delete email:', error);
+        showNotification('Failed to delete email', 'error');
+    }
 }
 
 // Tab switching

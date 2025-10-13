@@ -228,6 +228,15 @@ impl StorageBackend for SqliteBackend {
         ))
     }
 
+    async fn delete_email(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM emails WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(())
+    }
+
     async fn delete_old_emails_with_details(&self, hours: i64) -> Result<Vec<(String, String)>> {
         let cutoff = Utc::now() - Duration::hours(hours);
         let cutoff_str = cutoff.to_rfc3339();

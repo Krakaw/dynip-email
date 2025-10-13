@@ -11,8 +11,9 @@ use tower_http::{
 use tracing::info;
 
 use crate::storage::{models::Email, StorageBackend};
+use crate::webhooks::WebhookTrigger;
 use handlers::{
-    get_email_by_id, get_emails_for_address, AppConfig,
+    get_email_by_id, get_emails_for_address, delete_email, AppConfig,
     create_webhook, get_webhooks_for_mailbox, get_webhook_by_id,
     update_webhook, delete_webhook, test_webhook
 };
@@ -24,6 +25,7 @@ pub fn create_router(
     email_sender: broadcast::Sender<Email>,
     deletion_sender: broadcast::Sender<(String, String)>,
     domain_name: String,
+    webhook_trigger: WebhookTrigger,
 ) -> Router {
     let ws_state = WsState {
         email_receiver: email_sender.clone(),
@@ -35,6 +37,9 @@ pub fn create_router(
 
     // Create combined state for routes that need both storage and config
     let combined_state = (storage.clone(), app_config.clone());
+    
+    // Create state for delete email route (storage + webhook_trigger)
+    let delete_email_state = (storage.clone(), webhook_trigger);
 
     Router::new()
         // WebSocket route (needs domain for normalization)
@@ -46,6 +51,9 @@ pub fn create_router(
         // Email by ID doesn't need domain normalization
         .route("/api/email/:id", get(get_email_by_id))
         .with_state(storage.clone())
+        // Delete email route needs storage + webhook_trigger
+        .route("/api/email/:id", delete(delete_email))
+        .with_state(delete_email_state)
         // Webhook routes
         .route("/api/webhooks", post(create_webhook))
         .with_state(storage.clone())
