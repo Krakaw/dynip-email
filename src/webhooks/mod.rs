@@ -3,7 +3,7 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, debug};
 
 use crate::storage::{models::{Email, Webhook, WebhookEvent}, StorageBackend};
 use std::sync::Arc;
@@ -31,15 +31,21 @@ impl WebhookTrigger {
         let webhooks = self.storage.get_active_webhooks_for_event(address, event.clone()).await?;
         
         if webhooks.is_empty() {
+            debug!("🔍 No active webhooks found for event {:?} on mailbox {}", event, address);
             return Ok(());
         }
 
         info!(
-            "Triggering {} webhook(s) for event {:?} on mailbox {}",
+            "🎯 Triggering {} webhook(s) for event {:?} on mailbox {}",
             webhooks.len(),
             event,
             address
         );
+
+        // Log webhook details
+        for webhook in &webhooks {
+            info!("📋 Webhook {}: {} -> {}", webhook.id, webhook.mailbox_address, webhook.webhook_url);
+        }
 
         // Trigger webhooks concurrently
         let mut handles = Vec::new();
@@ -49,6 +55,8 @@ impl WebhookTrigger {
             let payload = self.create_webhook_payload(&event, email, &webhook);
             let webhook_url = self.normalize_webhook_url(&webhook.webhook_url)?;
             let webhook_id = webhook.id.clone();
+            
+            info!("🚀 Spawning webhook task for {} -> {}", webhook_id, webhook_url);
             
             let handle = tokio::spawn(async move {
                 Self::send_webhook_with_retry(client, &webhook_url, payload, &webhook_id).await
@@ -111,41 +119,66 @@ impl WebhookTrigger {
         let max_retries = 3;
         let mut last_error = None;
 
+        info!("🚀 Sending webhook {} to URL: {}", webhook_id, url);
+        debug!("📦 Webhook payload: {}", serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "Failed to serialize".to_string()));
+
         for attempt in 1..=max_retries {
+            info!("🔄 Webhook {} attempt {}/{}", webhook_id, attempt, max_retries);
+            
             match client
                 .post(url)
                 .json(&payload)
+                .timeout(Duration::from_secs(10))
                 .send()
                 .await
             {
                 Ok(response) => {
-                    if response.status().is_success() {
-                        info!("Webhook {} sent successfully to {}", webhook_id, url);
+                    let status = response.status();
+                    let headers = response.headers();
+                    
+                    info!("📡 Webhook {} received response: {} {}", webhook_id, status.as_u16(), status.canonical_reason().unwrap_or("Unknown"));
+                    debug!("📋 Response headers: {:?}", headers);
+                    
+                    if status.is_success() {
+                        info!("✅ Webhook {} sent successfully to {} (status: {})", webhook_id, url, status);
                         return Ok(());
                     } else {
+                        // Try to read response body for more details
+                        let body_text = response.text().await.unwrap_or_else(|_| "Failed to read response body".to_string());
                         warn!(
-                            "Webhook {} failed with status {}",
+                            "❌ Webhook {} failed with status {}: {}",
                             webhook_id,
-                            response.status()
+                            status,
+                            body_text
                         );
-                        last_error = Some(format!("HTTP {}", response.status()));
+                        last_error = Some(format!("HTTP {}: {}", status, body_text));
                     }
                 }
                 Err(e) => {
-                    warn!("Webhook {} attempt {} failed: {}", webhook_id, attempt, e);
-                    last_error = Some(e.to_string());
+                    let error_details = if e.is_timeout() {
+                        format!("Timeout error: {}", e)
+                    } else if e.is_connect() {
+                        format!("Connection error: {} - Check if the webhook URL is reachable and the server is running", e)
+                    } else if e.is_request() {
+                        format!("Request error: {} - Check the webhook URL format", e)
+                    } else {
+                        format!("HTTP client error: {}", e)
+                    };
+                    
+                    warn!("❌ Webhook {} attempt {} failed: {}", webhook_id, attempt, error_details);
+                    last_error = Some(error_details);
                 }
             }
 
             if attempt < max_retries {
                 let delay = Duration::from_secs(2_u64.pow(attempt - 1));
-                info!("Retrying webhook {} in {:?}", webhook_id, delay);
+                info!("⏳ Retrying webhook {} in {:?}", webhook_id, delay);
                 sleep(delay).await;
             }
         }
 
         error!(
-            "Webhook {} failed after {} attempts. Last error: {}",
+            "💥 Webhook {} failed after {} attempts. Last error: {}",
             webhook_id,
             max_retries,
             last_error.unwrap_or_else(|| "Unknown error".to_string())
@@ -166,28 +199,42 @@ impl WebhookTrigger {
 
         // Normalize URL - add http:// if no scheme is provided
         let url = self.normalize_webhook_url(&webhook.webhook_url)?;
+        
+        info!("🧪 Testing webhook {} to URL: {}", webhook.id, url);
+        debug!("📦 Test payload: {}", serde_json::to_string_pretty(&test_payload).unwrap_or_else(|_| "Failed to serialize".to_string()));
 
         match self.client
             .post(&url)
             .json(&test_payload)
+            .timeout(Duration::from_secs(10))
             .send()
             .await
         {
             Ok(response) => {
-                if response.status().is_success() {
-                    info!("Test webhook {} successful", webhook.id);
+                let status = response.status();
+                info!("📡 Test webhook {} received response: {} {}", webhook.id, status.as_u16(), status.canonical_reason().unwrap_or("Unknown"));
+                
+                if status.is_success() {
+                    info!("✅ Test webhook {} succeeded (status: {})", webhook.id, status);
                     Ok(true)
                 } else {
-                    warn!(
-                        "Test webhook {} failed with status {}",
-                        webhook.id,
-                        response.status()
-                    );
+                    let body_text = response.text().await.unwrap_or_else(|_| "Failed to read response body".to_string());
+                    warn!("❌ Test webhook {} failed with status {}: {}", webhook.id, status, body_text);
                     Ok(false)
                 }
             }
             Err(e) => {
-                error!("Test webhook {} failed: {}", webhook.id, e);
+                let error_details = if e.is_timeout() {
+                    format!("Timeout error: {}", e)
+                } else if e.is_connect() {
+                    format!("Connection error: {} - Check if the webhook URL is reachable and the server is running", e)
+                } else if e.is_request() {
+                    format!("Request error: {} - Check the webhook URL format", e)
+                } else {
+                    format!("HTTP client error: {}", e)
+                };
+                
+                error!("💥 Test webhook {} failed: {}", webhook.id, error_details);
                 Ok(false)
             }
         }
