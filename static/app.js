@@ -567,7 +567,6 @@ function showAddWebhookForm() {
                     <div class="checkbox-group">
                         <label><input type="checkbox" name="events" value="arrival" checked> Email Arrival</label>
                         <label><input type="checkbox" name="events" value="deletion"> Email Deletion</label>
-                        <label><input type="checkbox" name="events" value="read"> Email Read</label>
                     </div>
                 </div>
                 <div class="form-actions">
@@ -662,7 +661,6 @@ function editWebhook(webhookId) {
                     <div class="checkbox-group">
                         <label><input type="checkbox" name="editEvents" value="arrival" ${webhook.events.includes('arrival') ? 'checked' : ''}> Email Arrival</label>
                         <label><input type="checkbox" name="editEvents" value="deletion" ${webhook.events.includes('deletion') ? 'checked' : ''}> Email Deletion</label>
-                        <label><input type="checkbox" name="editEvents" value="read" ${webhook.events.includes('read') ? 'checked' : ''}> Email Read</label>
                     </div>
                 </div>
                 <div class="form-group">

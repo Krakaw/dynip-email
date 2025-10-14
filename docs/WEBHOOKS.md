@@ -10,7 +10,6 @@ Webhooks allow you to receive real-time notifications when email events occur. Y
 
 - **Email Arrival**: Triggered when a new email is received
 - **Email Deletion**: Triggered when an email is deleted (e.g., due to retention policy)
-- **Email Read**: Triggered when an email is viewed (optional)
 
 ## Configuration
 

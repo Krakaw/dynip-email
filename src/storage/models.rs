@@ -226,7 +226,6 @@ mod tests {
 pub enum WebhookEvent {
     Arrival,
     Deletion,
-    Read,
 }
 
 impl WebhookEvent {
@@ -234,7 +233,6 @@ impl WebhookEvent {
         match self {
             WebhookEvent::Arrival => "arrival",
             WebhookEvent::Deletion => "deletion",
-            WebhookEvent::Read => "read",
         }
     }
 
@@ -242,7 +240,6 @@ impl WebhookEvent {
         match s {
             "arrival" => Some(WebhookEvent::Arrival),
             "deletion" => Some(WebhookEvent::Deletion),
-            "read" => Some(WebhookEvent::Read),
             _ => None,
         }
     }
