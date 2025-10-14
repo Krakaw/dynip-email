@@ -1,4 +1,4 @@
-# <img src="src/frontend/static/logo.svg" width="56"  /> Temporary Mail Server
+# <img src="static/logo.svg" width="56"  /> Temporary Mail Server
 
 A lightweight, temporary mail server that accepts emails to any address with a modern web interface and real-time updates via WebSocket.
 
@@ -66,7 +66,10 @@ Key configuration options:
 | `SMTP_SSL_CERT_PATH` | - | Path to SSL certificate (fullchain.pem) |
 | `SMTP_SSL_KEY_PATH` | - | Path to SSL private key (privkey.pem) |
 | `EMAIL_RETENTION_HOURS` | - | Auto-delete emails older than X hours (optional) |
+| `REJECT_NON_DOMAIN_EMAILS` | false | Reject emails not addressed to DOMAIN_NAME |
 | `RUST_LOG` | info | Log level (trace, debug, info, warn, error) |
+
+For detailed configuration options, see the [Configuration Guide](docs/CONFIGURATION.md).
 
 **Note**: When `SMTP_SSL_ENABLED=true`, the server listens on **three ports**:
 - `SMTP_PORT` (non-TLS, always available)
@@ -77,79 +80,15 @@ Key configuration options:
 
 ## DNS Configuration for Email Delivery
 
-To receive emails from external senders, you need to configure DNS records for your domain. Here are the essential DNS records required:
+To receive emails from external senders, you need to configure DNS records for your domain. Essential records include:
 
-### Required DNS Records
+- **MX Record**: Points to your mail server
+- **A Record**: Resolves your mail server hostname to IP
+- **PTR Record**: Reverse DNS for your server IP
+- **SPF Record**: Authorizes your server to send emails
+- **DKIM/DMARC Records**: Optional but recommended for deliverability
 
-#### 1. **MX Record (Mail Exchange)**
-```
-Type: MX
-Name: @ (or your domain)
-Value: mail.yourdomain.com
-Priority: 10
-TTL: 3600
-```
-
-#### 2. **A Record for Mail Server**
-```
-Type: A
-Name: mail.yourdomain.com
-Value: YOUR_SERVER_IP_ADDRESS
-TTL: 3600
-```
-
-#### 3. **PTR Record (Reverse DNS)**
-```
-Type: PTR
-Name: YOUR_SERVER_IP_ADDRESS (in reverse)
-Value: mail.yourdomain.com
-```
-**Note**: PTR records are typically set up with your hosting provider or VPS provider.
-
-### Recommended DNS Records
-
-#### 4. **SPF Record (Sender Policy Framework)**
-```
-Type: TXT
-Name: @
-Value: v=spf1 a mx ~all
-TTL: 3600
-```
-
-#### 5. **DKIM Record (DomainKeys Identified Mail)** *(Optional)*
-```
-Type: TXT
-Name: default._domainkey
-Value: v=DKIM1; k=rsa; p=YOUR_PUBLIC_KEY
-TTL: 3600
-```
-**Note**: DKIM is only needed if you plan to send emails from this server. For a receiving-only mail server, this record is optional.
-
-#### 6. **DMARC Record (Domain-based Message Authentication)**
-```
-Type: TXT
-Name: _dmarc
-Value: v=DMARC1; p=quarantine; rua=mailto:dmarc@yourdomain.com
-TTL: 3600
-```
-
-### Testing DNS Configuration
-
-Test your DNS records using these commands:
-
-```bash
-# Test MX record
-dig MX yourdomain.com
-
-# Test A record
-dig A mail.yourdomain.com
-
-# Test PTR record
-dig -x YOUR_SERVER_IP
-
-# Test SPF record
-dig TXT yourdomain.com
-```
+For detailed DNS setup instructions, see the [Let's Encrypt Setup Guide](docs/LETSENCRYPT_SETUP.md).
 
 ### Production Configuration
 
@@ -191,7 +130,7 @@ SMTP_SSL_PORT=465
 
 ```bash
 # Run the Python test script (sends 3 test emails)
-python3 test_email.py
+python3 scripts/test_email.py
 ```
 
 #### Manual testing:
@@ -347,8 +286,17 @@ src/
 │   ├── mod.rs          # API router
 │   ├── handlers.rs     # REST endpoints
 │   └── websocket.rs    # WebSocket handling
-└── frontend/
-    └── static/         # HTML, CSS, JS files
+├── webhooks/
+│   └── mod.rs          # Webhook handling
+├── mcp/
+│   └── mod.rs          # MCP server
+└── config.rs           # Configuration management
+
+static/                 # Frontend files
+├── index.html          # Web interface
+├── app.js              # JavaScript
+├── style.css           # Styling
+└── logo.svg            # Logo
 ```
 
 ### Building
@@ -385,11 +333,12 @@ swaks --to user@test.com \
 For detailed guides and technical documentation, see the `/docs` folder:
 
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Comprehensive reference for all configuration options
-- **[Email Retention](docs/EMAIL_RETENTION.md)** - Automatic email cleanup and retention policies
-- **[WebSocket Deletion Notifications](docs/WEBSOCKET_DELETION_NOTIFICATIONS.md)** - Real-time deletion notifications
+- **[Email Retention](docs/EMAIL_RETENTION.md)** - Automatic email cleanup and retention policies with WebSocket notifications
 - **[Let's Encrypt Setup](docs/LETSENCRYPT_SETUP.md)** - Step-by-step guide for SSL/TLS configuration
-- **[Port Configuration](docs/PORTS_CONFIGURATION.md)** - Detailed SMTP port configuration options
-- **[Domain Normalization](docs/BACKEND_DOMAIN_NORMALIZATION.md)** - Technical details on address handling
+- **[Webhooks](docs/WEBHOOKS.md)** - Webhook configuration and debugging
+- **[MCP Integration](docs/MCP_INTEGRATION.md)** - Model Context Protocol server for LLM integration
+- **[Docker Deployment](docs/DOCKER_DEPLOYMENT.md)** - Docker and Docker Compose deployment
+- **[Systemd Service](docs/SYSTEMD_SERVICE.md)** - Running as a systemd service
 
 ## Future Enhancements
 

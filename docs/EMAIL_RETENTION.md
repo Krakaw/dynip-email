@@ -119,17 +119,24 @@ An index on the `timestamp` column (`idx_timestamp`) ensures efficient cleanup q
 
 ### Automated Testing
 
-Use the provided test script:
+You can test email retention by:
 
-```bash
-./scripts/test_retention.sh
-```
+1. **Set a short retention period**:
+   ```bash
+   EMAIL_RETENTION_HOURS=1 cargo run
+   ```
 
-This script:
-- Creates a temporary test database
-- Starts the app with `EMAIL_RETENTION_HOURS=1`
-- Verifies the retention task is running
-- Cleans up test resources
+2. **Send test emails and wait**:
+   ```bash
+   # Send test emails
+   python3 scripts/test_email.py
+   
+   # Wait for retention cleanup (runs every hour)
+   # Or manually update timestamps in database for immediate testing
+   ```
+
+3. **Verify cleanup in logs**:
+   Look for messages like "🗑️ Email retention cleanup: deleted X old email(s)"
 
 ## Monitoring
 
@@ -175,6 +182,83 @@ This script:
 
 2. Check cleanup frequency (hourly by default)
 3. Consider adjusting retention period if too many emails are being deleted at once
+
+## WebSocket Deletion Notifications
+
+The email retention system includes real-time WebSocket notifications when emails are deleted due to retention policies. This ensures the frontend stays synchronized with the backend when emails are automatically removed.
+
+### How It Works
+
+When the retention cleanup task runs (every hour), it:
+1. Identifies emails older than the configured retention period
+2. Deletes them from the database
+3. Broadcasts deletion events via WebSocket to all connected clients
+
+### WebSocket Message Types
+
+The WebSocket supports three message types:
+
+```typescript
+// New email received
+{
+  "type": "Email",
+  "Email": {
+    "id": "uuid",
+    "to": "user@example.com",
+    "from": "sender@example.com",
+    "subject": "Test Email",
+    "body": "Email content",
+    "timestamp": "2024-01-01T00:00:00Z",
+    "attachments": []
+  }
+}
+
+// Email deleted
+{
+  "type": "EmailDeleted",
+  "id": "uuid",
+  "address": "user@example.com"
+}
+
+// Connection established
+{
+  "type": "Connected",
+  "address": "user@example.com"
+}
+```
+
+### Frontend Handling
+
+The frontend JavaScript automatically:
+- Removes deleted emails from the local email list
+- Updates the email count
+- Clears the detail view if the currently selected email was deleted
+- Shows a notification to the user
+
+### Testing Deletion Notifications
+
+You can test deletion notifications by:
+
+1. **Set up retention**:
+   ```bash
+   EMAIL_RETENTION_HOURS=1 cargo run
+   ```
+
+2. **Send test emails**:
+   ```bash
+   python3 scripts/test_email.py
+   ```
+
+3. **Monitor WebSocket**:
+   Open the web interface and watch for deletion notifications in the browser console or network tab.
+
+### User Experience
+
+When an email is deleted:
+1. **Email List**: The email disappears from the list immediately
+2. **Email Count**: The count updates to reflect the new total
+3. **Detail View**: If the deleted email was selected, the detail view clears
+4. **Notification**: A browser notification appears: "🗑️ Email deleted"
 
 ## Future Enhancements
 

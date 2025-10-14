@@ -243,6 +243,105 @@ Enable debug logging to see webhook delivery details:
 RUST_LOG=debug cargo run
 ```
 
+## Debugging Webhook Issues
+
+### Common Failure Scenarios
+
+#### 1. Connection Errors
+- **Symptom**: "Connection error: ... - Check if the webhook URL is reachable and the server is running"
+- **Cause**: No server listening on the webhook URL
+- **Solution**: Start a webhook test server or ensure your webhook endpoint is running
+
+#### 2. Timeout Errors
+- **Symptom**: "Timeout error: ..."
+- **Cause**: Webhook server takes too long to respond (>10 seconds)
+- **Solution**: Optimize your webhook endpoint or increase timeout in code
+
+#### 3. HTTP Status Errors
+- **Symptom**: "Webhook failed with status 4xx/5xx"
+- **Cause**: Webhook server returns error status
+- **Solution**: Check your webhook endpoint implementation
+
+#### 4. URL Format Errors
+- **Symptom**: "Request error: ... - Check the webhook URL format"
+- **Cause**: Invalid URL format
+- **Solution**: Ensure URL includes protocol (http:// or https://)
+
+### Debugging Tools
+
+#### Enhanced Logging
+
+The webhook system includes detailed logging with emojis for easy identification:
+
+- 🚀 **Webhook Start**: When a webhook is being sent
+- 📦 **Payload**: The JSON payload being sent
+- 🔄 **Retry**: When a webhook is being retried
+- 📡 **Response**: HTTP response received
+- ✅ **Success**: Webhook sent successfully
+- ❌ **Failure**: Webhook failed with details
+- 💥 **Final Failure**: Webhook failed after all retries
+
+#### Test Webhook Server
+
+Use the included Python webhook server to debug webhook issues:
+
+```bash
+# Start the webhook test server
+python3 scripts/webhook_server.py
+
+# The server will start on port 3009 and display all incoming webhook requests
+```
+
+The webhook server will:
+- Display all incoming webhook requests
+- Show headers and payload
+- Return success responses
+- Help identify payload format issues
+
+#### Manual Testing
+
+Test webhooks manually using curl:
+
+```bash
+# Test with a simple payload
+curl -X POST http://localhost:3009 \
+  -H "Content-Type: application/json" \
+  -d '{"event":"test","mailbox":"test","message":"Hello World"}'
+```
+
+### Debugging Steps
+
+1. **Check Webhook Configuration**: Verify webhook URL is correct and accessible
+2. **Test Webhook Endpoint**: Start the webhook server and configure webhook to point to it
+3. **Analyze Logs**: Look for log patterns showing success or failure
+4. **Common Issues**: Check for connection errors, timeouts, HTTP status errors, or URL format issues
+
+### Environment Variables for Debugging
+
+```bash
+# Enable debug logging
+export RUST_LOG=debug
+
+# Enable webhook debug logging specifically
+export RUST_LOG=dynip_email::webhooks=debug
+
+# Run with debug logging
+RUST_LOG=debug cargo run
+```
+
+### Troubleshooting Checklist
+
+- [ ] Webhook URL is correct and accessible
+- [ ] URL includes proper protocol (http:// or https://)
+- [ ] Webhook endpoint is running and responding
+- [ ] Network connectivity is working
+- [ ] Webhook endpoint returns 2xx status codes
+- [ ] Payload format is correct
+- [ ] No firewall blocking the connection
+- [ ] SSL certificates are valid (for HTTPS)
+- [ ] Webhook endpoint handles POST requests
+- [ ] Content-Type is application/json
+
 ## Monitoring
 
 Monitor webhook delivery success rates and implement alerting for failed deliveries. Consider using webhook delivery services for production deployments.

@@ -31,25 +31,25 @@ For production deployment with SSL/TLS support:
 # Mount your certificates in docker-compose.yml
 
 # 2. Update environment variables
-cp docker.env .env
+cp env.example .env
 # Edit .env and set:
 # - SMTP_SSL_ENABLED=true
 # - SMTP_SSL_CERT_PATH=/etc/letsencrypt/live/yourdomain.com/fullchain.pem
 # - SMTP_SSL_KEY_PATH=/etc/letsencrypt/live/yourdomain.com/privkey.pem
 # - DOMAIN_NAME=yourdomain.com
 
-# 3. Start with nginx reverse proxy
-docker-compose --profile nginx up -d
+# 3. Start the services
+docker-compose up -d
 ```
 
 ## Configuration
 
 ### Environment Variables
 
-Copy `docker.env` to `.env` and customize:
+Copy `env.example` to `.env` and customize:
 
 ```bash
-cp docker.env .env
+cp env.example .env
 ```
 
 Key variables:
@@ -124,8 +124,8 @@ docker-compose up -d dynip-email
 
 ### Production (With SSL)
 ```bash
-# Production with SSL and nginx
-docker-compose --profile nginx up -d
+# Production with SSL
+docker-compose up -d
 ```
 
 ## Data Persistence

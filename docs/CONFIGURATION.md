@@ -96,13 +96,25 @@ SMTP_SSL_CERT_PATH=/etc/letsencrypt/live/mail.yourdomain.com/fullchain.pem
 SMTP_SSL_KEY_PATH=/etc/letsencrypt/live/mail.yourdomain.com/privkey.pem
 ```
 
+### Email Filtering
+
+#### REJECT_NON_DOMAIN_EMAILS
+- **Default**: `false`
+- **Description**: Reject emails that are not addressed to the defined DOMAIN_NAME
+- **Values**: `true` or `false`
+- **Note**: When true, only emails to @DOMAIN_NAME will be accepted
+
+```env
+REJECT_NON_DOMAIN_EMAILS=false
+```
+
 ### Email Retention
 
 #### EMAIL_RETENTION_HOURS
 - **Default**: None (emails never auto-delete)
 - **Description**: Automatically delete emails older than this many hours
 - **Values**: Any positive integer
-- **Note**: Currently not implemented in the codebase but available for future use
+- **Note**: Fully implemented with hourly cleanup task that runs automatically
 
 ```env
 EMAIL_RETENTION_HOURS=24
