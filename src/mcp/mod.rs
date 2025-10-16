@@ -8,9 +8,9 @@ use axum::{
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::info;
 
-use crate::storage::{models::{Email, Webhook, WebhookEvent}, StorageBackend};
+use crate::storage::{models::{Webhook, WebhookEvent}, StorageBackend};
 use crate::webhooks::WebhookTrigger;
 
 /// MCP server implementation for email management
@@ -143,7 +143,7 @@ impl EmailMcpServer {
 
     async fn handle_call_tool(
         Path(tool_name): Path<String>,
-        State((storage, webhook_trigger)): State<(Arc<dyn StorageBackend>, WebhookTrigger)>,
+        State((storage, _webhook_trigger)): State<(Arc<dyn StorageBackend>, WebhookTrigger)>,
         Json(payload): Json<Value>,
     ) -> Result<Json<Value>, (StatusCode, String)> {
         match tool_name.as_str() {

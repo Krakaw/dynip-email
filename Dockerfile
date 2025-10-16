@@ -51,7 +51,7 @@ COPY --from=builder /app/static /app/static
 RUN mkdir -p /app/data && chown -R dynip-email:dynip-email /app
 
 # Switch to non-root user
-USER dynip-email
+# USER dynip-email
 
 # Expose ports
 EXPOSE 3000 2525 587 465
