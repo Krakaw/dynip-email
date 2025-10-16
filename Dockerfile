@@ -51,7 +51,7 @@ COPY --from=builder /app/static /app/static
 RUN mkdir -p /app/data && chown -R dynip-email:dynip-email /app
 
 # Switch to non-root user
-# USER dynip-email
+USER dynip-email
 
 # Expose ports
 EXPOSE 3000 2525 587 465
@@ -61,6 +61,7 @@ ENV RUST_LOG=debug
 ENV SMTP_PORT=2525
 ENV API_PORT=3000
 ENV DATABASE_URL=sqlite:/app/data/emails.db
+ENV DOMAIN_NAME=tempmail.local
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

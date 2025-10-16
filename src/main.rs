@@ -22,6 +22,14 @@ use mcp::EmailMcpServer;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Set up panic handler for better error reporting
+    std::panic::set_hook(Box::new(|panic_info| {
+        eprintln!("💥 Application panicked: {}", panic_info);
+        if let Some(location) = panic_info.location() {
+            eprintln!("   at {}:{}:{}", location.file(), location.line(), location.column());
+        }
+    }));
+
     // Initialize tracing with env filter
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -29,11 +37,31 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let config = Config::from_env()?;
+    info!("🚀 Starting dynip-email server...");
+
+    let config = match Config::from_env() {
+        Ok(config) => {
+            info!("✅ Configuration loaded successfully");
+            config
+        }
+        Err(e) => {
+            error!("❌ Failed to load configuration: {}", e);
+            return Err(e);
+        }
+    };
 
     // Initialize storage backend
-    let storage: Arc<dyn StorageBackend> =
-        Arc::new(SqliteBackend::new(&config.database_url).await?);
+    info!("📊 Initializing database connection to: {}", config.database_url);
+    let storage: Arc<dyn StorageBackend> = match SqliteBackend::new(&config.database_url).await {
+        Ok(backend) => {
+            info!("✅ Database connection established successfully");
+            Arc::new(backend)
+        }
+        Err(e) => {
+            error!("❌ Failed to initialize database: {}", e);
+            return Err(e);
+        }
+    };
 
     // Create broadcast channels for email notifications and deletions
     let (email_tx, _) = broadcast::channel::<Email>(100);
