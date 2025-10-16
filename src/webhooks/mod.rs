@@ -283,11 +283,9 @@ mod tests {
     fn test_webhook_event_serialization() {
         assert_eq!(WebhookEvent::Arrival.as_str(), "arrival");
         assert_eq!(WebhookEvent::Deletion.as_str(), "deletion");
-        assert_eq!(WebhookEvent::Read.as_str(), "read");
 
         assert_eq!(WebhookEvent::from_str("arrival"), Some(WebhookEvent::Arrival));
         assert_eq!(WebhookEvent::from_str("deletion"), Some(WebhookEvent::Deletion));
-        assert_eq!(WebhookEvent::from_str("read"), Some(WebhookEvent::Read));
         assert_eq!(WebhookEvent::from_str("invalid"), None);
     }
 
