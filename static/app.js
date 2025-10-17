@@ -466,7 +466,7 @@ function updateFavicon() {
             originalFavicon = favicon.href;
         }
         
-        // Create red favicon using canvas
+        // Create red-tinted favicon using original
         setRedFavicon();
     } else {
         // Restore original favicon
@@ -476,40 +476,46 @@ function updateFavicon() {
     }
 }
 
-// Create and set red favicon
+// Create red-tinted favicon using original favicon as base
 function setRedFavicon() {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     canvas.width = 32;
     canvas.height = 32;
     
-    // Draw red circle background
-    ctx.fillStyle = '#ff4444';
-    ctx.beginPath();
-    ctx.arc(16, 16, 16, 0, 2 * Math.PI);
-    ctx.fill();
+    // Create image from original favicon
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+        // Draw original favicon
+        ctx.drawImage(img, 0, 0, 32, 32);
+        
+        // Apply red tint overlay
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = '#ff4444';
+        ctx.fillRect(0, 0, 32, 32);
+        
+        // Reset composite operation
+        ctx.globalCompositeOperation = 'source-over';
+        
+        // Convert to data URL and set as favicon
+        const dataURL = canvas.toDataURL('image/png');
+        const favicon = document.querySelector('link[rel="icon"]') || document.querySelector('link[rel="shortcut icon"]');
+        if (favicon) {
+            favicon.href = dataURL;
+        } else {
+            // Create new favicon link if none exists
+            const link = document.createElement('link');
+            link.rel = 'icon';
+            link.href = dataURL;
+            document.head.appendChild(link);
+        }
+    };
     
-    // Draw white envelope icon
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(8, 10, 16, 12);
-    ctx.fillRect(6, 12, 20, 2);
-    ctx.fillRect(6, 14, 20, 2);
-    ctx.fillRect(6, 16, 20, 2);
-    ctx.fillRect(6, 18, 20, 2);
-    
-    // Convert to data URL and set as favicon
-    const dataURL = canvas.toDataURL('image/png');
-    const favicon = document.querySelector('link[rel="icon"]') || document.querySelector('link[rel="shortcut icon"]');
-    if (favicon) {
-        favicon.href = dataURL;
-    } else {
-        // Create new favicon link if none exists
-        const link = document.createElement('link');
-        link.rel = 'icon';
-        link.href = dataURL;
-        document.head.appendChild(link);
-    }
+    // Load original favicon
+    img.src = originalFavicon || '/logo.svg';
 }
+
 
 // Request notification permission on page load
 if ('Notification' in window && Notification.permission === 'default') {
