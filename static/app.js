@@ -6,6 +6,15 @@ let selectedEmailId = null;
 let webhooks = [];
 let currentTab = 'emails';
 
+// WebSocket reconnection state
+let reconnectAttempts = 0;
+let reconnectTimeout = null;
+let isPageVisible = true;
+let shouldReconnect = false;
+
+// Favicon management
+let originalFavicon = null;
+
 // DOM elements
 const emailAddressInput = document.getElementById('emailAddress');
 const loadEmailsBtn = document.getElementById('loadEmails');
@@ -27,6 +36,10 @@ emailAddressInput.addEventListener('keypress', (e) => {
 themeToggle.addEventListener('click', toggleTheme);
 inboxTab.addEventListener('click', () => switchTab('emails'));
 webhooksTab.addEventListener('click', () => switchTab('webhooks'));
+
+// Page visibility and focus event listeners
+document.addEventListener('visibilitychange', handleVisibilityChange);
+window.addEventListener('focus', handleWindowFocus);
 
 // Theme management
 function initTheme() {
@@ -94,6 +107,7 @@ async function loadInbox() {
     
     // Close existing WebSocket connection
     if (websocket) {
+        stopReconnection(); // Stop any pending reconnection attempts
         websocket.close();
     }
     
@@ -121,6 +135,7 @@ async function loadInbox() {
 function displayEmails(emailsToDisplay) {
     if (emailsToDisplay.length === 0) {
         emailList.innerHTML = '<div class="empty-state"><p>📭 No emails yet</p></div>';
+        updateFavicon(); // Update favicon when no emails
         return;
     }
     
@@ -143,6 +158,9 @@ function displayEmails(emailsToDisplay) {
             `;
         })
         .join('');
+    
+    // Update favicon based on unread status
+    updateFavicon();
 }
 
 // Show email detail
@@ -228,6 +246,7 @@ function showEmailDetail(emailId) {
     if (email.isNew) {
         email.isNew = false;
         displayEmails(emails);
+        updateFavicon(); // Update favicon when email is marked as read
     }
 }
 
@@ -236,10 +255,18 @@ function connectWebSocket(address) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/api/ws/${encodeURIComponent(address)}`;
     
+    // Clear any existing reconnection timeout
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+    }
+    
     websocket = new WebSocket(wsUrl);
+    shouldReconnect = true;
     
     websocket.onopen = () => {
         console.log('WebSocket connected');
+        reconnectAttempts = 0; // Reset attempts on successful connection
         updateConnectionStatus(true);
     };
     
@@ -261,8 +288,8 @@ function connectWebSocket(address) {
                 displayEmails(emails);
                 updateEmailCount(emails.length);
                 
-                // Show notification
-                showNotification('📬 New email received!', `From: ${email.from}`);
+                // Show enhanced notification
+                showEnhancedNotification(email);
             }
             
             // Email deleted
@@ -307,11 +334,87 @@ function connectWebSocket(address) {
     websocket.onclose = () => {
         console.log('WebSocket disconnected');
         updateConnectionStatus(false);
+        
+        // Attempt to reconnect with exponential backoff
+        if (shouldReconnect) {
+            scheduleReconnect(address);
+        }
     };
 }
 
+// Schedule reconnection with exponential backoff
+function scheduleReconnect(address) {
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+    }
+    
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+    reconnectAttempts++;
+    
+    console.log(`Scheduling reconnection attempt ${reconnectAttempts} in ${delay}ms`);
+    updateConnectionStatus(false, 'Reconnecting...');
+    
+    reconnectTimeout = setTimeout(() => {
+        if (shouldReconnect) {
+            connectWebSocket(address);
+        }
+    }, delay);
+}
+
+// Stop reconnection attempts
+function stopReconnection() {
+    shouldReconnect = false;
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+    }
+    reconnectAttempts = 0;
+}
+
+// Handle page visibility change
+function handleVisibilityChange() {
+    const wasVisible = isPageVisible;
+    isPageVisible = !document.hidden;
+    
+    // If page becomes visible after being hidden, check connection and refresh
+    if (wasVisible === false && isPageVisible === true) {
+        console.log('Page became visible, checking connection...');
+        checkAndReconnectIfNeeded();
+    }
+}
+
+// Handle window focus
+function handleWindowFocus() {
+    console.log('Window focused, checking connection...');
+    checkAndReconnectIfNeeded();
+}
+
+// Check WebSocket connection and reconnect if needed
+async function checkAndReconnectIfNeeded() {
+    if (!currentAddress) return;
+    
+    // Check if WebSocket is closed or missing
+    if (!websocket || websocket.readyState === WebSocket.CLOSED) {
+        console.log('WebSocket is disconnected, reconnecting...');
+        connectWebSocket(currentAddress);
+        
+        // Fetch latest emails to ensure we have the most recent state
+        try {
+            console.log('Fetching latest emails after reconnection...');
+            const response = await fetch(`/api/emails/${encodeURIComponent(currentAddress)}`);
+            const data = await response.json();
+            
+            emails = data.emails || [];
+            displayEmails(emails);
+            updateEmailCount(emails.length);
+        } catch (error) {
+            console.error('Failed to fetch latest emails:', error);
+        }
+    }
+}
+
 // Update connection status indicator
-function updateConnectionStatus(isConnected) {
+function updateConnectionStatus(isConnected, statusText = null) {
     if (isConnected) {
         connectionStatus.classList.remove('offline');
         connectionStatus.classList.add('online');
@@ -319,7 +422,7 @@ function updateConnectionStatus(isConnected) {
     } else {
         connectionStatus.classList.remove('online');
         connectionStatus.classList.add('offline');
-        connectionStatus.querySelector('.status-text').textContent = 'Disconnected';
+        connectionStatus.querySelector('.status-text').textContent = statusText || 'Disconnected';
     }
 }
 
@@ -332,6 +435,79 @@ function updateEmailCount(count) {
 function showNotification(title, body) {
     if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(title, { body });
+    }
+}
+
+// Show enhanced notification for new emails
+function showEnhancedNotification(email) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+        const notification = new Notification('📬 New Email', {
+            body: `From: ${email.from}\nSubject: ${email.subject}`,
+            icon: '/logo.svg',
+            tag: 'new-email'
+        });
+        
+        notification.onclick = () => {
+            window.focus();
+            showEmailDetail(email.id);
+            notification.close();
+        };
+    }
+}
+
+// Update favicon based on unread messages
+function updateFavicon() {
+    const hasUnread = emails.some(email => email.isNew);
+    const favicon = document.querySelector('link[rel="icon"]') || document.querySelector('link[rel="shortcut icon"]');
+    
+    if (hasUnread) {
+        // Store original favicon if not already stored
+        if (!originalFavicon && favicon) {
+            originalFavicon = favicon.href;
+        }
+        
+        // Create red favicon using canvas
+        setRedFavicon();
+    } else {
+        // Restore original favicon
+        if (originalFavicon && favicon) {
+            favicon.href = originalFavicon;
+        }
+    }
+}
+
+// Create and set red favicon
+function setRedFavicon() {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 32;
+    canvas.height = 32;
+    
+    // Draw red circle background
+    ctx.fillStyle = '#ff4444';
+    ctx.beginPath();
+    ctx.arc(16, 16, 16, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // Draw white envelope icon
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(8, 10, 16, 12);
+    ctx.fillRect(6, 12, 20, 2);
+    ctx.fillRect(6, 14, 20, 2);
+    ctx.fillRect(6, 16, 20, 2);
+    ctx.fillRect(6, 18, 20, 2);
+    
+    // Convert to data URL and set as favicon
+    const dataURL = canvas.toDataURL('image/png');
+    const favicon = document.querySelector('link[rel="icon"]') || document.querySelector('link[rel="shortcut icon"]');
+    if (favicon) {
+        favicon.href = dataURL;
+    } else {
+        // Create new favicon link if none exists
+        const link = document.createElement('link');
+        link.rel = 'icon';
+        link.href = dataURL;
+        document.head.appendChild(link);
     }
 }
 
@@ -466,6 +642,7 @@ async function deleteEmail(emailId) {
         
         // Refresh email list
         displayEmails(emails);
+        updateFavicon(); // Update favicon after deletion
         
         // Show success message
         showNotification('Email deleted successfully', 'success');
