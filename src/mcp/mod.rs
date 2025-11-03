@@ -10,7 +10,10 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::info;
 
-use crate::storage::{models::{Webhook, WebhookEvent}, StorageBackend};
+use crate::storage::{
+    models::{Webhook, WebhookEvent},
+    StorageBackend,
+};
 use crate::webhooks::WebhookTrigger;
 
 /// MCP server implementation for email management
@@ -32,13 +35,13 @@ impl EmailMcpServer {
     /// Start the MCP server
     pub async fn start(&self, port: u16) -> Result<()> {
         info!("Starting MCP server on port {}", port);
-        
+
         let app = self.create_router();
         let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-        
+
         info!("🔌 MCP server listening on port {}", port);
         axum::serve(listener, app).await?;
-        
+
         Ok(())
     }
 
@@ -46,7 +49,7 @@ impl EmailMcpServer {
     fn create_router(&self) -> Router {
         let storage = self.storage.clone();
         let webhook_trigger = self.webhook_trigger.clone();
-        
+
         Router::new()
             .route("/", get(Self::handle_root))
             .route("/tools", get(Self::handle_list_tools))
@@ -148,10 +151,16 @@ impl EmailMcpServer {
     ) -> Result<Json<Value>, (StatusCode, String)> {
         match tool_name.as_str() {
             "list_emails" => {
-                let mailbox = payload.get("mailbox")
+                let mailbox = payload
+                    .get("mailbox")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing mailbox parameter".to_string()))?;
-                
+                    .ok_or_else(|| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            "Missing mailbox parameter".to_string(),
+                        )
+                    })?;
+
                 match storage.get_emails_for_address(mailbox).await {
                     Ok(emails) => Ok(Json(json!({
                         "emails": emails,
@@ -161,10 +170,16 @@ impl EmailMcpServer {
                 }
             }
             "read_email" => {
-                let email_id = payload.get("email_id")
+                let email_id = payload
+                    .get("email_id")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing email_id parameter".to_string()))?;
-                
+                    .ok_or_else(|| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            "Missing email_id parameter".to_string(),
+                        )
+                    })?;
+
                 match storage.get_email_by_id(email_id).await {
                     Ok(Some(email)) => Ok(Json(json!(email))),
                     Ok(None) => Err((StatusCode::NOT_FOUND, "Email not found".to_string())),
@@ -172,35 +187,62 @@ impl EmailMcpServer {
                 }
             }
             "create_webhook" => {
-                let mailbox = payload.get("mailbox")
+                let mailbox = payload
+                    .get("mailbox")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing mailbox parameter".to_string()))?;
-                let webhook_url = payload.get("webhook_url")
+                    .ok_or_else(|| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            "Missing mailbox parameter".to_string(),
+                        )
+                    })?;
+                let webhook_url = payload
+                    .get("webhook_url")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing webhook_url parameter".to_string()))?;
-                let events = payload.get("events")
+                    .ok_or_else(|| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            "Missing webhook_url parameter".to_string(),
+                        )
+                    })?;
+                let events = payload
+                    .get("events")
                     .and_then(|v| v.as_array())
-                    .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing events parameter".to_string()))?;
-                
+                    .ok_or_else(|| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            "Missing events parameter".to_string(),
+                        )
+                    })?;
+
                 let webhook_events: Result<Vec<WebhookEvent>, _> = events
                     .iter()
                     .filter_map(|v| v.as_str())
-                    .map(|s| WebhookEvent::from_str(s).ok_or_else(|| format!("Invalid event: {}", s)))
+                    .map(|s| {
+                        WebhookEvent::from_str(s).ok_or_else(|| format!("Invalid event: {}", s))
+                    })
                     .collect();
-                
+
                 let webhook_events = webhook_events.map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-                let webhook = Webhook::new(mailbox.to_string(), webhook_url.to_string(), webhook_events);
-                
+                let webhook =
+                    Webhook::new(mailbox.to_string(), webhook_url.to_string(), webhook_events);
+
                 match storage.create_webhook(webhook.clone()).await {
                     Ok(_) => Ok(Json(json!(webhook))),
                     Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
                 }
             }
             "list_webhooks" => {
-                let mailbox = payload.get("mailbox")
+                let mailbox = payload
+                    .get("mailbox")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing mailbox parameter".to_string()))?;
-                
+                    .ok_or_else(|| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            "Missing mailbox parameter".to_string(),
+                        )
+                    })?;
+
                 match storage.get_webhooks_for_mailbox(mailbox).await {
                     Ok(webhooks) => Ok(Json(json!({
                         "webhooks": webhooks,
@@ -270,18 +312,17 @@ mod tests {
     async fn test_mcp_server_creation() {
         let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
         let _server = EmailMcpServer::new(storage);
-        
+
         // Test that server can be created
         assert!(true);
     }
 
     #[tokio::test]
     async fn test_mcp_server_info() {
-        
         let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
         let server = EmailMcpServer::new(storage);
         let app = server.create_router();
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -292,12 +333,14 @@ mod tests {
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let info: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        
+
         assert_eq!(info["name"], "dynip-email-mcp");
         assert_eq!(info["version"], "1.0.0");
         assert!(info["capabilities"]["tools"].as_bool().unwrap());
@@ -306,11 +349,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_mcp_list_tools() {
-        
         let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
         let server = EmailMcpServer::new(storage);
         let app = server.create_router();
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -321,22 +363,24 @@ mod tests {
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let tools: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        
+
         assert!(tools["tools"].is_array());
         let tools_array = tools["tools"].as_array().unwrap();
         assert!(tools_array.len() >= 4); // list_emails, read_email, create_webhook, list_webhooks
-        
+
         // Check for specific tools
         let tool_names: Vec<&str> = tools_array
             .iter()
             .map(|t| t["name"].as_str().unwrap())
             .collect();
-        
+
         assert!(tool_names.contains(&"list_emails"));
         assert!(tool_names.contains(&"read_email"));
         assert!(tool_names.contains(&"create_webhook"));
@@ -345,11 +389,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_mcp_list_resources() {
-        
         let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
         let server = EmailMcpServer::new(storage);
         let app = server.create_router();
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -360,37 +403,38 @@ mod tests {
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let resources: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        
+
         assert!(resources["resources"].is_array());
         let resources_array = resources["resources"].as_array().unwrap();
         assert!(resources_array.len() >= 2); // email://, webhook://
-        
+
         // Check for specific resources
         let resource_uris: Vec<&str> = resources_array
             .iter()
             .map(|r| r["uri"].as_str().unwrap())
             .collect();
-        
+
         assert!(resource_uris.contains(&"email://*"));
         assert!(resource_uris.contains(&"webhook://*"));
     }
 
     #[tokio::test]
     async fn test_mcp_call_tool_list_emails() {
-        
         let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
         let server = EmailMcpServer::new(storage);
         let app = server.create_router();
-        
+
         let request_body = json!({
             "mailbox": "test"
         });
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -402,27 +446,28 @@ mod tests {
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        
+
         assert!(result["emails"].is_array());
         assert_eq!(result["count"], 0);
     }
 
     #[tokio::test]
     async fn test_mcp_call_tool_invalid_tool() {
-        
         let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
         let server = EmailMcpServer::new(storage);
         let app = server.create_router();
-        
+
         let request_body = json!({
             "mailbox": "test"
         });
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -434,19 +479,18 @@ mod tests {
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
     async fn test_mcp_call_tool_missing_parameters() {
-        
         let storage = Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap());
         let server = EmailMcpServer::new(storage);
         let app = server.create_router();
-        
+
         let request_body = json!({});
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -458,7 +502,7 @@ mod tests {
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }

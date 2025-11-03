@@ -9,7 +9,10 @@ use std::sync::{
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 
-use crate::storage::{models::{Email, WebhookEvent}, StorageBackend};
+use crate::storage::{
+    models::{Email, WebhookEvent},
+    StorageBackend,
+};
 use crate::webhooks::WebhookTrigger;
 use parser::parse_email;
 
@@ -333,17 +336,24 @@ impl Handler for SmtpHandler {
         let webhook_trigger = WebhookTrigger::new(self.storage.clone());
         let email_for_webhook = email_clone.clone();
         let to_address = email_clone.to.clone();
-        
+
         self.runtime_handle.spawn(async move {
             if let Err(e) = storage.store_email(email_clone.clone()).await {
                 error!("Failed to store email: {}", e);
             } else {
                 debug!("Successfully stored email {}", email_clone.id);
-                
+
                 // Trigger webhooks for email arrival
                 // Extract mailbox name without domain for webhook lookup
                 let mailbox_name = to_address.split('@').next().unwrap_or(&to_address);
-                if let Err(e) = webhook_trigger.trigger_webhooks(mailbox_name, WebhookEvent::Arrival, Some(&email_for_webhook)).await {
+                if let Err(e) = webhook_trigger
+                    .trigger_webhooks(
+                        mailbox_name,
+                        WebhookEvent::Arrival,
+                        Some(&email_for_webhook),
+                    )
+                    .await
+                {
                     error!("Failed to trigger webhooks: {}", e);
                 }
             }

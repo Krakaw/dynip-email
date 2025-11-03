@@ -40,5 +40,9 @@ pub trait StorageBackend: Send + Sync {
     async fn delete_webhook(&self, id: &str) -> Result<()>;
 
     /// Get active webhooks for a specific event and mailbox
-    async fn get_active_webhooks_for_event(&self, address: &str, event: WebhookEvent) -> Result<Vec<Webhook>>;
+    async fn get_active_webhooks_for_event(
+        &self,
+        address: &str,
+        event: WebhookEvent,
+    ) -> Result<Vec<Webhook>>;
 }

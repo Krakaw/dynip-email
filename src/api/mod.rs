@@ -1,7 +1,10 @@
 pub mod handlers;
 pub mod websocket;
 
-use axum::{routing::{get, post, put, delete}, Router};
+use axum::{
+    routing::{delete, get, post, put},
+    Router,
+};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tower_http::{
@@ -13,9 +16,8 @@ use tracing::info;
 use crate::storage::{models::Email, StorageBackend};
 use crate::webhooks::WebhookTrigger;
 use handlers::{
-    get_email_by_id, get_emails_for_address, delete_email, AppConfig,
-    create_webhook, get_webhooks_for_mailbox, get_webhook_by_id,
-    update_webhook, delete_webhook, test_webhook
+    create_webhook, delete_email, delete_webhook, get_email_by_id, get_emails_for_address,
+    get_webhook_by_id, get_webhooks_for_mailbox, test_webhook, update_webhook, AppConfig,
 };
 use websocket::{websocket_handler, WsState};
 
@@ -37,7 +39,7 @@ pub fn create_router(
 
     // Create combined state for routes that need both storage and config
     let combined_state = (storage.clone(), app_config.clone());
-    
+
     // Create state for delete email route (storage + webhook_trigger)
     let delete_email_state = (storage.clone(), webhook_trigger);
 

@@ -5,7 +5,10 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::str::FromStr;
 use tracing::{info, warn};
 
-use super::{models::{Email, Webhook, WebhookEvent}, StorageBackend};
+use super::{
+    models::{Email, Webhook, WebhookEvent},
+    StorageBackend,
+};
 
 /// SQLite implementation of StorageBackend
 pub struct SqliteBackend {
@@ -233,7 +236,7 @@ impl StorageBackend for SqliteBackend {
             .bind(id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(())
     }
 
@@ -306,17 +309,7 @@ impl StorageBackend for SqliteBackend {
     }
 
     async fn get_webhooks_for_mailbox(&self, address: &str) -> Result<Vec<Webhook>> {
-        let rows = sqlx::query_as::<
-            _,
-            (
-                String,
-                String,
-                String,
-                String,
-                String,
-                bool,
-            ),
-        >(
+        let rows = sqlx::query_as::<_, (String, String, String, String, String, bool)>(
             r#"
             SELECT id, mailbox_address, webhook_url, events, created_at, enabled
             FROM webhooks
@@ -330,7 +323,44 @@ impl StorageBackend for SqliteBackend {
 
         let webhooks = rows
             .into_iter()
-            .map(|(id, mailbox_address, webhook_url, events_json, created_at, enabled)| {
+            .map(
+                |(id, mailbox_address, webhook_url, events_json, created_at, enabled)| {
+                    let created_at = DateTime::parse_from_rfc3339(&created_at)
+                        .unwrap_or_else(|_| Utc::now().into())
+                        .with_timezone(&Utc);
+
+                    // Deserialize events from JSON
+                    let events = serde_json::from_str(&events_json).unwrap_or_default();
+
+                    Webhook {
+                        id,
+                        mailbox_address,
+                        webhook_url,
+                        events,
+                        created_at,
+                        enabled,
+                    }
+                },
+            )
+            .collect();
+
+        Ok(webhooks)
+    }
+
+    async fn get_webhook_by_id(&self, id: &str) -> Result<Option<Webhook>> {
+        let row = sqlx::query_as::<_, (String, String, String, String, String, bool)>(
+            r#"
+            SELECT id, mailbox_address, webhook_url, events, created_at, enabled
+            FROM webhooks
+            WHERE id = ?
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(
+            |(id, mailbox_address, webhook_url, events_json, created_at, enabled)| {
                 let created_at = DateTime::parse_from_rfc3339(&created_at)
                     .unwrap_or_else(|_| Utc::now().into())
                     .with_timezone(&Utc);
@@ -346,51 +376,8 @@ impl StorageBackend for SqliteBackend {
                     created_at,
                     enabled,
                 }
-            })
-            .collect();
-
-        Ok(webhooks)
-    }
-
-    async fn get_webhook_by_id(&self, id: &str) -> Result<Option<Webhook>> {
-        let row = sqlx::query_as::<
-            _,
-            (
-                String,
-                String,
-                String,
-                String,
-                String,
-                bool,
-            ),
-        >(
-            r#"
-            SELECT id, mailbox_address, webhook_url, events, created_at, enabled
-            FROM webhooks
-            WHERE id = ?
-            "#,
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(|(id, mailbox_address, webhook_url, events_json, created_at, enabled)| {
-            let created_at = DateTime::parse_from_rfc3339(&created_at)
-                .unwrap_or_else(|_| Utc::now().into())
-                .with_timezone(&Utc);
-
-            // Deserialize events from JSON
-            let events = serde_json::from_str(&events_json).unwrap_or_default();
-
-            Webhook {
-                id,
-                mailbox_address,
-                webhook_url,
-                events,
-                created_at,
-                enabled,
-            }
-        }))
+            },
+        ))
     }
 
     async fn update_webhook(&self, webhook: Webhook) -> Result<()> {
@@ -431,18 +418,12 @@ impl StorageBackend for SqliteBackend {
         Ok(())
     }
 
-    async fn get_active_webhooks_for_event(&self, address: &str, event: WebhookEvent) -> Result<Vec<Webhook>> {
-        let rows = sqlx::query_as::<
-            _,
-            (
-                String,
-                String,
-                String,
-                String,
-                String,
-                bool,
-            ),
-        >(
+    async fn get_active_webhooks_for_event(
+        &self,
+        address: &str,
+        event: WebhookEvent,
+    ) -> Result<Vec<Webhook>> {
+        let rows = sqlx::query_as::<_, (String, String, String, String, String, bool)>(
             r#"
             SELECT id, mailbox_address, webhook_url, events, created_at, enabled
             FROM webhooks
@@ -455,23 +436,25 @@ impl StorageBackend for SqliteBackend {
 
         let webhooks = rows
             .into_iter()
-            .map(|(id, mailbox_address, webhook_url, events_json, created_at, enabled)| {
-                let created_at = DateTime::parse_from_rfc3339(&created_at)
-                    .unwrap_or_else(|_| Utc::now().into())
-                    .with_timezone(&Utc);
+            .map(
+                |(id, mailbox_address, webhook_url, events_json, created_at, enabled)| {
+                    let created_at = DateTime::parse_from_rfc3339(&created_at)
+                        .unwrap_or_else(|_| Utc::now().into())
+                        .with_timezone(&Utc);
 
-                // Deserialize events from JSON
-                let events = serde_json::from_str(&events_json).unwrap_or_default();
+                    // Deserialize events from JSON
+                    let events = serde_json::from_str(&events_json).unwrap_or_default();
 
-                Webhook {
-                    id,
-                    mailbox_address,
-                    webhook_url,
-                    events,
-                    created_at,
-                    enabled,
-                }
-            })
+                    Webhook {
+                        id,
+                        mailbox_address,
+                        webhook_url,
+                        events,
+                        created_at,
+                        enabled,
+                    }
+                },
+            )
             .filter(|webhook| webhook.events.contains(&event))
             .collect();
 

@@ -3,9 +3,12 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{error, info, warn, debug};
+use tracing::{debug, error, info, warn};
 
-use crate::storage::{models::{Email, Webhook, WebhookEvent}, StorageBackend};
+use crate::storage::{
+    models::{Email, Webhook, WebhookEvent},
+    StorageBackend,
+};
 use std::sync::Arc;
 
 /// Webhook trigger system for sending HTTP POST requests
@@ -27,11 +30,22 @@ impl WebhookTrigger {
     }
 
     /// Trigger webhooks for a specific event and mailbox
-    pub async fn trigger_webhooks(&self, address: &str, event: WebhookEvent, email: Option<&Email>) -> Result<()> {
-        let webhooks = self.storage.get_active_webhooks_for_event(address, event.clone()).await?;
-        
+    pub async fn trigger_webhooks(
+        &self,
+        address: &str,
+        event: WebhookEvent,
+        email: Option<&Email>,
+    ) -> Result<()> {
+        let webhooks = self
+            .storage
+            .get_active_webhooks_for_event(address, event.clone())
+            .await?;
+
         if webhooks.is_empty() {
-            debug!("🔍 No active webhooks found for event {:?} on mailbox {}", event, address);
+            debug!(
+                "🔍 No active webhooks found for event {:?} on mailbox {}",
+                event, address
+            );
             return Ok(());
         }
 
@@ -44,24 +58,30 @@ impl WebhookTrigger {
 
         // Log webhook details
         for webhook in &webhooks {
-            info!("📋 Webhook {}: {} -> {}", webhook.id, webhook.mailbox_address, webhook.webhook_url);
+            info!(
+                "📋 Webhook {}: {} -> {}",
+                webhook.id, webhook.mailbox_address, webhook.webhook_url
+            );
         }
 
         // Trigger webhooks concurrently
         let mut handles = Vec::new();
-        
+
         for webhook in webhooks {
             let client = self.client.clone();
             let payload = self.create_webhook_payload(&event, email, &webhook);
             let webhook_url = self.normalize_webhook_url(&webhook.webhook_url)?;
             let webhook_id = webhook.id.clone();
-            
-            info!("🚀 Spawning webhook task for {} -> {}", webhook_id, webhook_url);
-            
+
+            info!(
+                "🚀 Spawning webhook task for {} -> {}",
+                webhook_id, webhook_url
+            );
+
             let handle = tokio::spawn(async move {
                 Self::send_webhook_with_retry(client, &webhook_url, payload, &webhook_id).await
             });
-            
+
             handles.push(handle);
         }
 
@@ -76,7 +96,12 @@ impl WebhookTrigger {
     }
 
     /// Create webhook payload based on event type
-    fn create_webhook_payload(&self, event: &WebhookEvent, email: Option<&Email>, webhook: &Webhook) -> Value {
+    fn create_webhook_payload(
+        &self,
+        event: &WebhookEvent,
+        email: Option<&Email>,
+        webhook: &Webhook,
+    ) -> Value {
         let mut payload = json!({
             "event": event.as_str(),
             "mailbox": webhook.mailbox_address,
@@ -120,11 +145,18 @@ impl WebhookTrigger {
         let mut last_error = None;
 
         info!("🚀 Sending webhook {} to URL: {}", webhook_id, url);
-        debug!("📦 Webhook payload: {}", serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "Failed to serialize".to_string()));
+        debug!(
+            "📦 Webhook payload: {}",
+            serde_json::to_string_pretty(&payload)
+                .unwrap_or_else(|_| "Failed to serialize".to_string())
+        );
 
         for attempt in 1..=max_retries {
-            info!("🔄 Webhook {} attempt {}/{}", webhook_id, attempt, max_retries);
-            
+            info!(
+                "🔄 Webhook {} attempt {}/{}",
+                webhook_id, attempt, max_retries
+            );
+
             match client
                 .post(url)
                 .json(&payload)
@@ -135,21 +167,30 @@ impl WebhookTrigger {
                 Ok(response) => {
                     let status = response.status();
                     let headers = response.headers();
-                    
-                    info!("📡 Webhook {} received response: {} {}", webhook_id, status.as_u16(), status.canonical_reason().unwrap_or("Unknown"));
+
+                    info!(
+                        "📡 Webhook {} received response: {} {}",
+                        webhook_id,
+                        status.as_u16(),
+                        status.canonical_reason().unwrap_or("Unknown")
+                    );
                     debug!("📋 Response headers: {:?}", headers);
-                    
+
                     if status.is_success() {
-                        info!("✅ Webhook {} sent successfully to {} (status: {})", webhook_id, url, status);
+                        info!(
+                            "✅ Webhook {} sent successfully to {} (status: {})",
+                            webhook_id, url, status
+                        );
                         return Ok(());
                     } else {
                         // Try to read response body for more details
-                        let body_text = response.text().await.unwrap_or_else(|_| "Failed to read response body".to_string());
+                        let body_text = response
+                            .text()
+                            .await
+                            .unwrap_or_else(|_| "Failed to read response body".to_string());
                         warn!(
                             "❌ Webhook {} failed with status {}: {}",
-                            webhook_id,
-                            status,
-                            body_text
+                            webhook_id, status, body_text
                         );
                         last_error = Some(format!("HTTP {}: {}", status, body_text));
                     }
@@ -164,8 +205,11 @@ impl WebhookTrigger {
                     } else {
                         format!("HTTP client error: {}", e)
                     };
-                    
-                    warn!("❌ Webhook {} attempt {} failed: {}", webhook_id, attempt, error_details);
+
+                    warn!(
+                        "❌ Webhook {} attempt {} failed: {}",
+                        webhook_id, attempt, error_details
+                    );
                     last_error = Some(error_details);
                 }
             }
@@ -199,11 +243,16 @@ impl WebhookTrigger {
 
         // Normalize URL - add http:// if no scheme is provided
         let url = self.normalize_webhook_url(&webhook.webhook_url)?;
-        
-        info!("🧪 Testing webhook {} to URL: {}", webhook.id, url);
-        debug!("📦 Test payload: {}", serde_json::to_string_pretty(&test_payload).unwrap_or_else(|_| "Failed to serialize".to_string()));
 
-        match self.client
+        info!("🧪 Testing webhook {} to URL: {}", webhook.id, url);
+        debug!(
+            "📦 Test payload: {}",
+            serde_json::to_string_pretty(&test_payload)
+                .unwrap_or_else(|_| "Failed to serialize".to_string())
+        );
+
+        match self
+            .client
             .post(&url)
             .json(&test_payload)
             .timeout(Duration::from_secs(10))
@@ -212,14 +261,28 @@ impl WebhookTrigger {
         {
             Ok(response) => {
                 let status = response.status();
-                info!("📡 Test webhook {} received response: {} {}", webhook.id, status.as_u16(), status.canonical_reason().unwrap_or("Unknown"));
-                
+                info!(
+                    "📡 Test webhook {} received response: {} {}",
+                    webhook.id,
+                    status.as_u16(),
+                    status.canonical_reason().unwrap_or("Unknown")
+                );
+
                 if status.is_success() {
-                    info!("✅ Test webhook {} succeeded (status: {})", webhook.id, status);
+                    info!(
+                        "✅ Test webhook {} succeeded (status: {})",
+                        webhook.id, status
+                    );
                     Ok(true)
                 } else {
-                    let body_text = response.text().await.unwrap_or_else(|_| "Failed to read response body".to_string());
-                    warn!("❌ Test webhook {} failed with status {}: {}", webhook.id, status, body_text);
+                    let body_text = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "Failed to read response body".to_string());
+                    warn!(
+                        "❌ Test webhook {} failed with status {}: {}",
+                        webhook.id, status, body_text
+                    );
                     Ok(false)
                 }
             }
@@ -233,7 +296,7 @@ impl WebhookTrigger {
                 } else {
                     format!("HTTP client error: {}", e)
                 };
-                
+
                 error!("💥 Test webhook {} failed: {}", webhook.id, error_details);
                 Ok(false)
             }
@@ -264,13 +327,18 @@ mod tests {
         );
 
         // Create a mock storage backend for testing
-        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let storage = Arc::new(
+            crate::storage::sqlite::SqliteBackend::new("sqlite::memory:")
+                .await
+                .unwrap(),
+        );
         let trigger = WebhookTrigger {
             client: Client::new(),
             storage,
         };
 
-        let payload = trigger.create_webhook_payload(&WebhookEvent::Arrival, Some(&email), &webhook);
+        let payload =
+            trigger.create_webhook_payload(&WebhookEvent::Arrival, Some(&email), &webhook);
 
         assert_eq!(payload["event"], "arrival");
         assert_eq!(payload["mailbox"], "test@example.com");
@@ -284,15 +352,21 @@ mod tests {
         assert_eq!(WebhookEvent::Arrival.as_str(), "arrival");
         assert_eq!(WebhookEvent::Deletion.as_str(), "deletion");
 
-        assert_eq!(WebhookEvent::from_str("arrival"), Some(WebhookEvent::Arrival));
-        assert_eq!(WebhookEvent::from_str("deletion"), Some(WebhookEvent::Deletion));
+        assert_eq!(
+            WebhookEvent::from_str("arrival"),
+            Some(WebhookEvent::Arrival)
+        );
+        assert_eq!(
+            WebhookEvent::from_str("deletion"),
+            Some(WebhookEvent::Deletion)
+        );
         assert_eq!(WebhookEvent::from_str("invalid"), None);
     }
 
     #[tokio::test]
     async fn test_webhook_http_delivery_success() {
-        use mockito::{Server, Mock};
-        
+        use mockito::{Mock, Server};
+
         let mut server = Server::new_async().await;
         let _mock = server
             .mock("POST", "/webhook")
@@ -302,13 +376,13 @@ mod tests {
             .await;
 
         let webhook_url = format!("{}/webhook", server.url());
-        let webhook = Webhook::new(
-            "test".to_string(),
-            webhook_url,
-            vec![WebhookEvent::Arrival],
-        );
+        let webhook = Webhook::new("test".to_string(), webhook_url, vec![WebhookEvent::Arrival]);
 
-        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let storage = Arc::new(
+            crate::storage::sqlite::SqliteBackend::new("sqlite::memory:")
+                .await
+                .unwrap(),
+        );
         let trigger = WebhookTrigger::new(storage);
 
         let result = trigger.test_webhook(&webhook).await;
@@ -320,8 +394,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_webhook_http_delivery_failure() {
-        use mockito::{Server, Mock};
-        
+        use mockito::{Mock, Server};
+
         let mut server = Server::new_async().await;
         let _mock = server
             .mock("POST", "/webhook")
@@ -330,13 +404,13 @@ mod tests {
             .await;
 
         let webhook_url = format!("{}/webhook", server.url());
-        let webhook = Webhook::new(
-            "test".to_string(),
-            webhook_url,
-            vec![WebhookEvent::Arrival],
-        );
+        let webhook = Webhook::new("test".to_string(), webhook_url, vec![WebhookEvent::Arrival]);
 
-        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let storage = Arc::new(
+            crate::storage::sqlite::SqliteBackend::new("sqlite::memory:")
+                .await
+                .unwrap(),
+        );
         let trigger = WebhookTrigger::new(storage);
 
         let result = trigger.test_webhook(&webhook).await;
@@ -348,8 +422,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_webhook_http_delivery_timeout() {
-        use mockito::{Server, Mock};
-        
+        use mockito::{Mock, Server};
+
         let mut server = Server::new_async().await;
         let _mock = server
             .mock("POST", "/webhook")
@@ -358,13 +432,13 @@ mod tests {
             .await;
 
         let webhook_url = format!("{}/webhook", server.url());
-        let webhook = Webhook::new(
-            "test".to_string(),
-            webhook_url,
-            vec![WebhookEvent::Arrival],
-        );
+        let webhook = Webhook::new("test".to_string(), webhook_url, vec![WebhookEvent::Arrival]);
 
-        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let storage = Arc::new(
+            crate::storage::sqlite::SqliteBackend::new("sqlite::memory:")
+                .await
+                .unwrap(),
+        );
         let trigger = WebhookTrigger::new(storage);
 
         let result = trigger.test_webhook(&webhook).await;
@@ -382,7 +456,11 @@ mod tests {
             vec![WebhookEvent::Deletion],
         );
 
-        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let storage = Arc::new(
+            crate::storage::sqlite::SqliteBackend::new("sqlite::memory:")
+                .await
+                .unwrap(),
+        );
         let trigger = WebhookTrigger::new(storage);
         let payload = trigger.create_webhook_payload(&WebhookEvent::Deletion, None, &webhook);
 
@@ -410,9 +488,14 @@ mod tests {
             vec![],
         );
 
-        let storage = Arc::new(crate::storage::sqlite::SqliteBackend::new("sqlite::memory:").await.unwrap());
+        let storage = Arc::new(
+            crate::storage::sqlite::SqliteBackend::new("sqlite::memory:")
+                .await
+                .unwrap(),
+        );
         let trigger = WebhookTrigger::new(storage);
-        let payload = trigger.create_webhook_payload(&WebhookEvent::Arrival, Some(&email), &webhook);
+        let payload =
+            trigger.create_webhook_payload(&WebhookEvent::Arrival, Some(&email), &webhook);
 
         assert_eq!(payload["event"], "arrival");
         assert_eq!(payload["mailbox"], "test");

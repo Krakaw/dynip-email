@@ -281,7 +281,7 @@ mod tests {
         assert_eq!(config.smtp_ssl.enabled, false);
         assert_eq!(config.mcp_enabled, false);
         assert_eq!(config.mcp_port, 3001);
-        
+
         // Clean up after test
         clear_all_env_vars();
     }
@@ -325,7 +325,7 @@ mod tests {
         );
         assert_eq!(config.mcp_enabled, true);
         assert_eq!(config.mcp_port, 3002);
-        
+
         // Clean up after test
         clear_all_env_vars();
     }
@@ -343,7 +343,7 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("SMTP_SSL_CERT_PATH and SMTP_SSL_KEY_PATH must be set"));
-        
+
         // Clean up after test
         clear_all_env_vars();
     }
@@ -355,7 +355,7 @@ mod tests {
 
         let result = from_env_test();
         assert!(result.is_err());
-        
+
         // Clean up after test
         clear_all_env_vars();
     }
@@ -367,7 +367,7 @@ mod tests {
 
         let config = from_env_test().unwrap();
         assert_eq!(config.email_retention_hours, None);
-        
+
         // Clean up after test
         clear_all_env_vars();
     }
@@ -379,7 +379,7 @@ mod tests {
 
         let config = from_env_test().unwrap();
         assert_eq!(config.reject_non_domain_emails, false);
-        
+
         // Clean up after test
         clear_all_env_vars();
     }

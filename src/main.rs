@@ -16,9 +16,13 @@ use tokio::sync::broadcast;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use storage::{models::{Email, WebhookEvent}, sqlite::SqliteBackend, StorageBackend};
-use webhooks::WebhookTrigger;
 use mcp::EmailMcpServer;
+use storage::{
+    models::{Email, WebhookEvent},
+    sqlite::SqliteBackend,
+    StorageBackend,
+};
+use webhooks::WebhookTrigger;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -26,7 +30,12 @@ async fn main() -> Result<()> {
     std::panic::set_hook(Box::new(|panic_info| {
         eprintln!("💥 Application panicked: {}", panic_info);
         if let Some(location) = panic_info.location() {
-            eprintln!("   at {}:{}:{}", location.file(), location.line(), location.column());
+            eprintln!(
+                "   at {}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            );
         }
     }));
 
@@ -51,7 +60,10 @@ async fn main() -> Result<()> {
     };
 
     // Initialize storage backend
-    info!("📊 Initializing database connection to: {}", config.database_url);
+    info!(
+        "📊 Initializing database connection to: {}",
+        config.database_url
+    );
     let storage: Arc<dyn StorageBackend> = match SqliteBackend::new(&config.database_url).await {
         Ok(backend) => {
             info!("✅ Database connection established successfully");
@@ -95,11 +107,14 @@ async fn main() -> Result<()> {
                             for (email_id, address) in deleted_emails {
                                 info!("📤 Broadcasting deletion notification for email {} to address {}", email_id, address);
                                 let _ = deletion_tx_clone.send((email_id.clone(), address.clone()));
-                                
+
                                 // Trigger webhooks for email deletion
                                 // Extract mailbox name without domain for webhook lookup
                                 let mailbox_name = address.split('@').next().unwrap_or(&address);
-                                if let Err(e) = webhook_trigger.trigger_webhooks(mailbox_name, WebhookEvent::Deletion, None).await {
+                                if let Err(e) = webhook_trigger
+                                    .trigger_webhooks(mailbox_name, WebhookEvent::Deletion, None)
+                                    .await
+                                {
                                     error!("Failed to trigger deletion webhooks: {}", e);
                                 }
                             }

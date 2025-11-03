@@ -269,11 +269,7 @@ pub struct Webhook {
 
 impl Webhook {
     /// Create a new webhook with generated UUID
-    pub fn new(
-        mailbox_address: String,
-        webhook_url: String,
-        events: Vec<WebhookEvent>,
-    ) -> Self {
+    pub fn new(mailbox_address: String, webhook_url: String, events: Vec<WebhookEvent>) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             mailbox_address,

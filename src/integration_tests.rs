@@ -1,12 +1,15 @@
 #[cfg(test)]
 mod integration_tests {
+    use crate::storage::sqlite::SqliteBackend;
+    use crate::storage::{
+        models::{Email, Webhook, WebhookEvent},
+        StorageBackend,
+    };
+    use crate::webhooks::WebhookTrigger;
+    use mockito::{Mock, Server};
     use std::sync::Arc;
     use tempfile::tempdir;
     use tokio::time::{sleep, Duration};
-    use crate::storage::sqlite::SqliteBackend;
-    use crate::storage::{models::{Email, Webhook, WebhookEvent}, StorageBackend};
-    use crate::webhooks::WebhookTrigger;
-    use mockito::{Server, Mock};
 
     /// Integration test for complete webhook flow
     #[tokio::test]
@@ -14,8 +17,12 @@ mod integration_tests {
         // Setup test database
         let temp_dir = tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
-        
+        let storage = Arc::new(
+            SqliteBackend::new(&format!("sqlite:{}", db_path.display()))
+                .await
+                .unwrap(),
+        );
+
         // Setup mock webhook server
         let mut server = Server::new_async().await;
         let mock = server
@@ -27,7 +34,7 @@ mod integration_tests {
             .await;
 
         let webhook_url = format!("{}/webhook", server.url());
-        
+
         // Create webhook for arrival and deletion events
         let webhook = Webhook::new(
             "test".to_string(),
@@ -51,11 +58,15 @@ mod integration_tests {
         storage.store_email(email.clone()).await.unwrap();
 
         // Trigger arrival webhook
-        let result = webhook_trigger.trigger_webhooks("test", WebhookEvent::Arrival, Some(&email)).await;
+        let result = webhook_trigger
+            .trigger_webhooks("test", WebhookEvent::Arrival, Some(&email))
+            .await;
         assert!(result.is_ok());
 
         // Test 2: Email deletion triggers webhook
-        let result = webhook_trigger.trigger_webhooks("test", WebhookEvent::Deletion, None).await;
+        let result = webhook_trigger
+            .trigger_webhooks("test", WebhookEvent::Deletion, None)
+            .await;
         assert!(result.is_ok());
 
         // Verify both webhook calls were made
@@ -68,8 +79,12 @@ mod integration_tests {
         // Setup test database
         let temp_dir = tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
-        
+        let storage = Arc::new(
+            SqliteBackend::new(&format!("sqlite:{}", db_path.display()))
+                .await
+                .unwrap(),
+        );
+
         // Setup mock webhook servers
         let mut server1 = Server::new_async().await;
         let mock1 = server1
@@ -126,10 +141,14 @@ mod integration_tests {
         storage.store_email(email2.clone()).await.unwrap();
 
         // Trigger webhooks for both mailboxes
-        let result1 = webhook_trigger.trigger_webhooks("alice", WebhookEvent::Arrival, Some(&email1)).await;
+        let result1 = webhook_trigger
+            .trigger_webhooks("alice", WebhookEvent::Arrival, Some(&email1))
+            .await;
         assert!(result1.is_ok());
 
-        let result2 = webhook_trigger.trigger_webhooks("bob", WebhookEvent::Arrival, Some(&email2)).await;
+        let result2 = webhook_trigger
+            .trigger_webhooks("bob", WebhookEvent::Arrival, Some(&email2))
+            .await;
         assert!(result2.is_ok());
 
         // Verify both webhook calls were made to correct endpoints
@@ -143,8 +162,12 @@ mod integration_tests {
         // Setup test database
         let temp_dir = tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
-        
+        let storage = Arc::new(
+            SqliteBackend::new(&format!("sqlite:{}", db_path.display()))
+                .await
+                .unwrap(),
+        );
+
         // Setup mock webhook server that fails first, then succeeds
         let mut server = Server::new_async().await;
         let mock_fail = server
@@ -162,13 +185,9 @@ mod integration_tests {
             .await;
 
         let webhook_url = format!("{}/webhook", server.url());
-        
+
         // Create webhook
-        let webhook = Webhook::new(
-            "test".to_string(),
-            webhook_url,
-            vec![WebhookEvent::Arrival],
-        );
+        let webhook = Webhook::new("test".to_string(), webhook_url, vec![WebhookEvent::Arrival]);
         storage.create_webhook(webhook).await.unwrap();
 
         let webhook_trigger = WebhookTrigger::new(storage.clone());
@@ -185,7 +204,9 @@ mod integration_tests {
         storage.store_email(email.clone()).await.unwrap();
 
         // Trigger webhook (should fail first, then retry and succeed)
-        let result = webhook_trigger.trigger_webhooks("test", WebhookEvent::Arrival, Some(&email)).await;
+        let result = webhook_trigger
+            .trigger_webhooks("test", WebhookEvent::Arrival, Some(&email))
+            .await;
         assert!(result.is_ok());
 
         // Verify both calls were made
@@ -199,8 +220,12 @@ mod integration_tests {
         // Setup test database
         let temp_dir = tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
-        
+        let storage = Arc::new(
+            SqliteBackend::new(&format!("sqlite:{}", db_path.display()))
+                .await
+                .unwrap(),
+        );
+
         // Setup mock webhook server
         let mut server = Server::new_async().await;
         let mock = server
@@ -211,7 +236,7 @@ mod integration_tests {
             .await;
 
         let webhook_url = format!("{}/webhook", server.url());
-        
+
         // Create webhook that only listens for arrival events
         let webhook = Webhook::new(
             "test".to_string(),
@@ -234,11 +259,15 @@ mod integration_tests {
         storage.store_email(email.clone()).await.unwrap();
 
         // Trigger arrival webhook (should be called)
-        let result1 = webhook_trigger.trigger_webhooks("test", WebhookEvent::Arrival, Some(&email)).await;
+        let result1 = webhook_trigger
+            .trigger_webhooks("test", WebhookEvent::Arrival, Some(&email))
+            .await;
         assert!(result1.is_ok());
 
         // Trigger deletion webhook (should NOT be called due to filtering)
-        let result2 = webhook_trigger.trigger_webhooks("test", WebhookEvent::Deletion, None).await;
+        let result2 = webhook_trigger
+            .trigger_webhooks("test", WebhookEvent::Deletion, None)
+            .await;
         assert!(result2.is_ok());
 
         // Verify only arrival webhook was called
@@ -251,8 +280,12 @@ mod integration_tests {
         // Setup test database
         let temp_dir = tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
-        
+        let storage = Arc::new(
+            SqliteBackend::new(&format!("sqlite:{}", db_path.display()))
+                .await
+                .unwrap(),
+        );
+
         // Setup mock webhook server
         let mut server = Server::new_async().await;
         let mock = server
@@ -264,13 +297,9 @@ mod integration_tests {
 
         // Test webhook URL without protocol (should be normalized to http://)
         let webhook_url = format!("{}/webhook", server.url());
-        
+
         // Create webhook with URL without protocol
-        let webhook = Webhook::new(
-            "test".to_string(),
-            webhook_url,
-            vec![WebhookEvent::Arrival],
-        );
+        let webhook = Webhook::new("test".to_string(), webhook_url, vec![WebhookEvent::Arrival]);
         storage.create_webhook(webhook).await.unwrap();
 
         let webhook_trigger = WebhookTrigger::new(storage.clone());
@@ -287,7 +316,9 @@ mod integration_tests {
         storage.store_email(email.clone()).await.unwrap();
 
         // Trigger webhook (should normalize URL and succeed)
-        let result = webhook_trigger.trigger_webhooks("test", WebhookEvent::Arrival, Some(&email)).await;
+        let result = webhook_trigger
+            .trigger_webhooks("test", WebhookEvent::Arrival, Some(&email))
+            .await;
         assert!(result.is_ok());
 
         // Verify webhook was called with normalized URL
@@ -300,8 +331,12 @@ mod integration_tests {
         // Setup test database
         let temp_dir = tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let storage = Arc::new(SqliteBackend::new(&format!("sqlite:{}", db_path.display())).await.unwrap());
-        
+        let storage = Arc::new(
+            SqliteBackend::new(&format!("sqlite:{}", db_path.display()))
+                .await
+                .unwrap(),
+        );
+
         // Setup mock webhook server
         let mut server = Server::new_async().await;
         let mock = server
@@ -312,13 +347,10 @@ mod integration_tests {
             .await;
 
         let webhook_url = format!("{}/webhook", server.url());
-        
+
         // Create disabled webhook
-        let mut webhook = Webhook::new(
-            "test".to_string(),
-            webhook_url,
-            vec![WebhookEvent::Arrival],
-        );
+        let mut webhook =
+            Webhook::new("test".to_string(), webhook_url, vec![WebhookEvent::Arrival]);
         webhook.enabled = false; // Disable the webhook
         storage.create_webhook(webhook).await.unwrap();
 
@@ -336,7 +368,9 @@ mod integration_tests {
         storage.store_email(email.clone()).await.unwrap();
 
         // Trigger webhook (should not be called due to disabled status)
-        let result = webhook_trigger.trigger_webhooks("test", WebhookEvent::Arrival, Some(&email)).await;
+        let result = webhook_trigger
+            .trigger_webhooks("test", WebhookEvent::Arrival, Some(&email))
+            .await;
         assert!(result.is_ok());
 
         // Verify webhook was NOT called
