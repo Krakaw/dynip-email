@@ -196,8 +196,8 @@ button:hover {
 }
 
 .email-list-panel h2 {
-    padding: 1.25rem;
-    border-bottom: 1px solid var(--border-color);
+    padding: 0;
+    margin: 0;
     font-size: 1.25rem;
 }
 
@@ -465,8 +465,7 @@ button:hover {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
-    padding-bottom: 1rem;
+    padding: 1.25rem;
     border-bottom: 1px solid var(--border-color);
 }
 
