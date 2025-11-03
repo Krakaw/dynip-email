@@ -62,7 +62,7 @@ USER dynip-email
 EXPOSE 3000 2525 587 465
 
 # Set environment variables
-ENV RUST_LOG=debug
+ENV RUST_LOG=info
 ENV SMTP_PORT=2525
 ENV API_PORT=3000
 ENV DATABASE_URL=sqlite:/app/data/emails.db
