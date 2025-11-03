@@ -1,7 +1,8 @@
 services:
   dynip-email:
-    image: dynip-email:latest
+    image: ghcr.io/krakaw/dynip-email:latest
     container_name: dynip-email
+    pull_policy: always
     restart: unless-stopped
     ports:
       # Web interface
