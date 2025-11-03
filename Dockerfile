@@ -5,6 +5,7 @@ FROM rust:1.90-slim AS builder
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -33,6 +34,8 @@ FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
+    libsqlite3-0 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -48,7 +51,9 @@ COPY --from=builder /app/target/release/dynip-email /app/dynip-email
 COPY --from=builder /app/static /app/static
 
 # Create data directory for database
-RUN mkdir -p /app/data && chown -R dynip-email:dynip-email /app
+RUN mkdir -p /app/data \
+    && chmod 755 /app/data \
+    && chown -R dynip-email:dynip-email /app/data
 
 # Switch to non-root user
 USER dynip-email
