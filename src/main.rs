@@ -25,7 +25,7 @@ use storage::{
 use webhooks::WebhookTrigger;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     // Set up panic handler for better error reporting
     std::panic::set_hook(Box::new(|panic_info| {
         eprintln!("💥 Application panicked: {}", panic_info);
@@ -46,6 +46,14 @@ async fn main() -> Result<()> {
         )
         .init();
 
+    // Run the actual main logic and handle errors explicitly
+    if let Err(e) = run().await {
+        eprintln!("❌ Fatal error: {}", e);
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<()> {
     info!("🚀 Starting dynip-email server...");
 
     let config = match Config::from_env() {
@@ -242,17 +250,16 @@ async fn main() -> Result<()> {
     match api::start_server_with_shutdown(router, config.api_port, shutdown_signal).await {
         Ok(_) => {
             info!("✅ Server shutdown completed gracefully");
+            // Force exit after graceful shutdown
+            // This ensures the process exits even if background tasks are still running
+            info!("🔄 Exiting application...");
+            std::process::exit(0);
         }
         Err(e) => {
             error!("❌ Server error: {}", e);
             return Err(e);
         }
     }
-
-    // Force exit the process since SMTP servers don't support graceful shutdown
-    // This ensures the application actually exits when Ctrl+C is pressed
-    info!("🔄 Exiting application...");
-    std::process::exit(0);
 }
 
 #[cfg(test)]
