@@ -51,9 +51,10 @@ COPY --from=builder /app/target/release/dynip-email /app/dynip-email
 COPY --from=builder /app/static /app/static
 
 # Create data directory for database
-RUN mkdir -p /app/data \
-    && chmod 755 /app/data \
-    && chown -R dynip-email:dynip-email /app/data
+RUN mkdir -p /app/data
+
+# Change ownership of all app files to non-root user
+RUN chown -R dynip-email:dynip-email /app
 
 # Switch to non-root user
 USER dynip-email
