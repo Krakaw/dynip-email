@@ -508,9 +508,7 @@ impl StorageBackend for SqliteBackend {
         if let Some(mailbox) = existing {
             // Mailbox already exists and is locked - don't allow changing password
             if mailbox.is_locked {
-                return Err(anyhow::anyhow!(
-                    "Mailbox is already locked with a password"
-                ));
+                return Err(anyhow::anyhow!("Mailbox is already locked with a password"));
             }
             // Update existing unlocked mailbox
             sqlx::query(

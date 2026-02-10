@@ -267,8 +267,12 @@ pub async fn create_webhook(
     Json(request): Json<CreateWebhookRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     // Verify password if mailbox is locked
-    verify_mailbox_password(&storage, &request.mailbox_address, request.password.as_deref())
-        .await?;
+    verify_mailbox_password(
+        &storage,
+        &request.mailbox_address,
+        request.password.as_deref(),
+    )
+    .await?;
 
     // Parse events
     let events: Result<Vec<WebhookEvent>, _> = request
