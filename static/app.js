@@ -5,6 +5,7 @@ let emails = [];
 let selectedEmailId = null;
 let webhooks = [];
 let currentTab = 'emails';
+let mailboxPassword = ''; // Current session password
 
 // WebSocket reconnection state
 let reconnectAttempts = 0;
@@ -89,6 +90,167 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// Password management
+function getStoredPassword(address) {
+    const key = `mailbox_password_${address}`;
+    return localStorage.getItem(key) || '';
+}
+
+function storePassword(address, password) {
+    const key = `mailbox_password_${address}`;
+    localStorage.setItem(key, password);
+    mailboxPassword = password;
+}
+
+function clearStoredPassword(address) {
+    const key = `mailbox_password_${address}`;
+    localStorage.removeItem(key);
+    mailboxPassword = '';
+}
+
+// Check mailbox status (locked or unlocked)
+async function checkMailboxStatus(address) {
+    try {
+        const response = await fetch(`/api/mailbox/${encodeURIComponent(address)}/status`);
+        const data = await response.json();
+        return data.is_locked;
+    } catch (error) {
+        console.error('Failed to check mailbox status:', error);
+        return false;
+    }
+}
+
+// Show claim mailbox modal
+function showClaimModal(address) {
+    const modal = document.createElement('div');
+    modal.className = 'password-modal';
+    modal.innerHTML = `
+        <div class="password-modal-content">
+            <h2>🔒 Claim This Mailbox</h2>
+            <p>This mailbox is unclaimed. Set a password to protect it from unauthorized access.</p>
+            <form id="claimForm">
+                <div class="form-group">
+                    <label for="claimPassword">Password:</label>
+                    <input type="password" id="claimPassword" placeholder="Enter a strong password" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password:</label>
+                    <input type="password" id="confirmPassword" placeholder="Confirm password" required>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Claim Mailbox</button>
+                    <button type="button" class="btn-secondary" onclick="closeClaimModal()">Skip</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    document.getElementById('claimForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const password = document.getElementById('claimPassword').value;
+        const confirm = document.getElementById('confirmPassword').value;
+        
+        if (password !== confirm) {
+            alert('Passwords do not match');
+            return;
+        }
+        
+        await claimMailbox(address, password);
+    });
+}
+
+// Close claim modal
+function closeClaimModal() {
+    const modal = document.querySelector('.password-modal');
+    if (modal) modal.remove();
+    // Continue without claiming
+    continueLoadInbox(currentAddress, '');
+}
+
+// Claim mailbox with password
+async function claimMailbox(address, password) {
+    try {
+        const response = await fetch(`/api/mailbox/${encodeURIComponent(address)}/claim`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ password })
+        });
+        
+        if (response.ok) {
+            storePassword(address, password);
+            closeClaimModal();
+            continueLoadInbox(address, password);
+        } else {
+            const error = await response.json();
+            alert('Failed to claim mailbox: ' + (error.message || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Failed to claim mailbox:', error);
+        alert('Failed to claim mailbox');
+    }
+}
+
+// Show unlock mailbox modal
+function showUnlockModal(address) {
+    const modal = document.createElement('div');
+    modal.className = 'password-modal';
+    modal.innerHTML = `
+        <div class="password-modal-content">
+            <h2>🔐 Mailbox Protected</h2>
+            <p>This mailbox is password protected. Enter the password to access it.</p>
+            <form id="unlockForm">
+                <div class="form-group">
+                    <label for="unlockPassword">Password:</label>
+                    <input type="password" id="unlockPassword" placeholder="Enter password" required autofocus>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Unlock</button>
+                    <button type="button" class="btn-secondary" onclick="closeUnlockModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    document.getElementById('unlockForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const password = document.getElementById('unlockPassword').value;
+        await unlockMailbox(address, password);
+    });
+}
+
+// Close unlock modal
+function closeUnlockModal() {
+    const modal = document.querySelector('.password-modal');
+    if (modal) modal.remove();
+}
+
+// Unlock mailbox with password
+async function unlockMailbox(address, password) {
+    // Try to fetch emails with the password
+    try {
+        const response = await fetch(`/api/emails/${encodeURIComponent(address)}?password=${encodeURIComponent(password)}`);
+        
+        if (response.ok) {
+            storePassword(address, password);
+            closeUnlockModal();
+            continueLoadInbox(address, password);
+        } else if (response.status === 401) {
+            alert('Incorrect password');
+        } else {
+            alert('Failed to unlock mailbox');
+        }
+    } catch (error) {
+        console.error('Failed to unlock mailbox:', error);
+        alert('Failed to unlock mailbox');
+    }
+}
+
 // Load inbox for the specified email address
 async function loadInbox() {
     const address = emailAddressInput.value.trim();
@@ -111,9 +273,64 @@ async function loadInbox() {
         websocket.close();
     }
     
+    // Check if mailbox is locked
+    const isLocked = await checkMailboxStatus(address);
+    
+    // Try to get stored password
+    const storedPassword = getStoredPassword(address);
+    
+    if (isLocked) {
+        // Mailbox is locked - need password
+        if (storedPassword) {
+            // Try stored password
+            mailboxPassword = storedPassword;
+            const passwordWorks = await verifyPassword(address, storedPassword);
+            if (passwordWorks) {
+                continueLoadInbox(address, storedPassword);
+            } else {
+                // Stored password is wrong, clear it and ask for new one
+                clearStoredPassword(address);
+                showUnlockModal(address);
+            }
+        } else {
+            // No stored password, ask user
+            showUnlockModal(address);
+        }
+    } else {
+        // Mailbox is unlocked - offer to claim it
+        if (!storedPassword) {
+            showClaimModal(address);
+        } else {
+            // Already claimed previously, just load
+            mailboxPassword = storedPassword;
+            continueLoadInbox(address, storedPassword);
+        }
+    }
+}
+
+// Verify if password is correct
+async function verifyPassword(address, password) {
+    try {
+        const response = await fetch(`/api/emails/${encodeURIComponent(address)}?password=${encodeURIComponent(password)}`);
+        return response.ok;
+    } catch (error) {
+        return false;
+    }
+}
+
+// Continue loading inbox after password handling
+async function continueLoadInbox(address, password) {
+    mailboxPassword = password;
+    
     // Fetch emails
     try {
-        const response = await fetch(`/api/emails/${encodeURIComponent(address)}`);
+        const passwordParam = password ? `?password=${encodeURIComponent(password)}` : '';
+        const response = await fetch(`/api/emails/${encodeURIComponent(address)}${passwordParam}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
         const data = await response.json();
         
         emails = data.emails || [];
@@ -681,7 +898,8 @@ async function loadWebhooks(address) {
     if (!address) return;
     
     try {
-        const response = await fetch(`/api/webhooks/${encodeURIComponent(address)}`);
+        const passwordParam = mailboxPassword ? `?password=${encodeURIComponent(mailboxPassword)}` : '';
+        const response = await fetch(`/api/webhooks/${encodeURIComponent(address)}${passwordParam}`);
         const data = await response.json();
         
         webhooks = data.webhooks || [];
@@ -780,16 +998,23 @@ async function createWebhook() {
     }
     
     try {
+        const requestBody = {
+            mailbox_address: currentAddress,
+            webhook_url: url,
+            events: events
+        };
+        
+        // Include password if mailbox is protected
+        if (mailboxPassword) {
+            requestBody.password = mailboxPassword;
+        }
+        
         const response = await fetch('/api/webhooks', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                mailbox_address: currentAddress,
-                webhook_url: url,
-                events: events
-            })
+            body: JSON.stringify(requestBody)
         });
         
         if (response.ok) {
