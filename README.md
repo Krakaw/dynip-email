@@ -14,6 +14,7 @@ A lightweight, temporary mail server that accepts emails to any address with a m
 🔔 **Live Notifications** - Real-time WebSocket updates for email deletions  
 🔗 **Webhook Support** - Per-mailbox webhook events for email arrivals, deletions, and reads  
 🤖 **MCP Integration** - Model Context Protocol server for LLM/AI assistant integration  
+🔒 **Password Protection** - First-claim model to lock mailboxes with passwords  
 
 ## Quick Start
 
@@ -339,6 +340,7 @@ For detailed guides and technical documentation, see the `/docs` folder:
 - **[MCP Integration](docs/MCP_INTEGRATION.md)** - Model Context Protocol server for LLM integration
 - **[Docker Deployment](docs/DOCKER_DEPLOYMENT.md)** - Docker and Docker Compose deployment
 - **[Systemd Service](docs/SYSTEMD_SERVICE.md)** - Running as a systemd service
+- **[Mailbox Password Protection](docs/MAILBOX_PASSWORD_PROTECTION.md)** - First-claim password protection for mailboxes
 
 ## Future Enhancements
 
@@ -350,6 +352,7 @@ For detailed guides and technical documentation, see the `/docs` folder:
 - [ ] Docker containerization
 - [ ] Rate limiting
 - [x] Auto-expire old emails (implemented via EMAIL_RETENTION_HOURS)
+- [x] Mailbox password protection (implemented via first-claim model)
 
 ## License
 

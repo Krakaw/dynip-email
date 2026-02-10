@@ -280,3 +280,42 @@ impl Webhook {
         }
     }
 }
+
+/// Mailbox model representing a protected mailbox
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mailbox {
+    /// Mailbox address (unique identifier)
+    pub address: String,
+
+    /// Bcrypt password hash (None if not yet claimed)
+    #[serde(skip_serializing)]
+    pub password_hash: Option<String>,
+
+    /// When the mailbox was first claimed
+    pub created_at: DateTime<Utc>,
+
+    /// Whether the mailbox is locked (has a password)
+    pub is_locked: bool,
+}
+
+impl Mailbox {
+    /// Create a new unclaimed mailbox
+    pub fn new(address: String) -> Self {
+        Self {
+            address,
+            password_hash: None,
+            created_at: Utc::now(),
+            is_locked: false,
+        }
+    }
+
+    /// Create a mailbox with a password hash
+    pub fn with_password(address: String, password_hash: String) -> Self {
+        Self {
+            address,
+            password_hash: Some(password_hash),
+            created_at: Utc::now(),
+            is_locked: true,
+        }
+    }
+}

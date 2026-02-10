@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -34,13 +34,77 @@ impl AppConfig {
     }
 }
 
+/// Query parameters for password-protected endpoints
+#[derive(Debug, Deserialize)]
+pub struct PasswordQuery {
+    password: Option<String>,
+}
+
+/// Verify password for a mailbox
+async fn verify_mailbox_password(
+    storage: &Arc<dyn StorageBackend>,
+    address: &str,
+    provided_password: Option<&str>,
+) -> Result<(), (StatusCode, String)> {
+    // Check if mailbox is locked
+    let is_locked = storage
+        .is_mailbox_locked(address)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if !is_locked {
+        // Mailbox not locked, allow access
+        return Ok(());
+    }
+
+    // Mailbox is locked, verify password
+    let provided_password = provided_password.ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            "Mailbox is password protected. Please provide password.".to_string(),
+        )
+    })?;
+
+    let mailbox = storage
+        .get_mailbox(address)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Mailbox not found".to_string(),
+            )
+        })?;
+
+    let password_hash = mailbox.password_hash.ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Mailbox password not set".to_string(),
+        )
+    })?;
+
+    // Verify password using bcrypt
+    bcrypt::verify(provided_password, &password_hash).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Password verification error: {}", e),
+        )
+    })?;
+
+    Ok(())
+}
+
 /// Get all emails for a specific address
 pub async fn get_emails_for_address(
     Path(address): Path<String>,
+    Query(params): Query<PasswordQuery>,
     State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     // Normalize the address (append domain if not present)
     let normalized_address = config.normalize_address(&address);
+
+    // Verify password if mailbox is locked
+    verify_mailbox_password(&storage, &normalized_address, params.password.as_deref()).await?;
 
     match storage.get_emails_for_address(&normalized_address).await {
         Ok(emails) => Ok(Json(json!({ "emails": emails }))),
@@ -114,12 +178,78 @@ pub async fn delete_email(
     }
 }
 
+/// Claim mailbox request
+#[derive(Debug, Deserialize)]
+pub struct ClaimMailboxRequest {
+    pub password: String,
+}
+
+/// Check mailbox status (locked or not)
+pub async fn check_mailbox_status(
+    Path(address): Path<String>,
+    State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let normalized_address = config.normalize_address(&address);
+
+    let is_locked = storage
+        .is_mailbox_locked(&normalized_address)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(json!({
+        "address": normalized_address,
+        "is_locked": is_locked
+    })))
+}
+
+/// Claim a mailbox with a password (first-claim model)
+pub async fn claim_mailbox(
+    Path(address): Path<String>,
+    State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
+    Json(request): Json<ClaimMailboxRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let normalized_address = config.normalize_address(&address);
+
+    // Check if mailbox is already locked
+    let is_locked = storage
+        .is_mailbox_locked(&normalized_address)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if is_locked {
+        return Err((
+            StatusCode::CONFLICT,
+            "Mailbox is already claimed and locked".to_string(),
+        ));
+    }
+
+    // Hash the password
+    let password_hash = bcrypt::hash(&request.password, bcrypt::DEFAULT_COST).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to hash password: {}", e),
+        )
+    })?;
+
+    // Set mailbox password
+    storage
+        .set_mailbox_password(&normalized_address, password_hash)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(json!({
+        "message": "Mailbox claimed successfully",
+        "address": normalized_address
+    })))
+}
+
 /// Create webhook request
 #[derive(Debug, Deserialize)]
 pub struct CreateWebhookRequest {
     pub mailbox_address: String,
     pub webhook_url: String,
     pub events: Vec<String>,
+    pub password: Option<String>,
 }
 
 /// Update webhook request
@@ -136,6 +266,10 @@ pub async fn create_webhook(
     State(storage): State<Arc<dyn StorageBackend>>,
     Json(request): Json<CreateWebhookRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    // Verify password if mailbox is locked
+    verify_mailbox_password(&storage, &request.mailbox_address, request.password.as_deref())
+        .await?;
+
     // Parse events
     let events: Result<Vec<WebhookEvent>, _> = request
         .events
@@ -178,8 +312,12 @@ pub async fn create_webhook(
 /// Get webhooks for a mailbox
 pub async fn get_webhooks_for_mailbox(
     Path(address): Path<String>,
+    Query(params): Query<PasswordQuery>,
     State(storage): State<Arc<dyn StorageBackend>>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    // Verify password if mailbox is locked
+    verify_mailbox_password(&storage, &address, params.password.as_deref()).await?;
+
     // Extract mailbox name without domain for webhook lookup
     let mailbox_name = address.split('@').next().unwrap_or(&address);
     match storage.get_webhooks_for_mailbox(mailbox_name).await {

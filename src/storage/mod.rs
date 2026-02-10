@@ -3,7 +3,7 @@ pub mod sqlite;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use models::{Email, Webhook, WebhookEvent};
+use models::{Email, Mailbox, Webhook, WebhookEvent};
 
 /// Trait defining the storage backend interface
 /// This allows swapping storage implementations (SQLite, PostgreSQL, Redis, etc.)
@@ -45,4 +45,13 @@ pub trait StorageBackend: Send + Sync {
         address: &str,
         event: WebhookEvent,
     ) -> Result<Vec<Webhook>>;
+
+    /// Get mailbox by address
+    async fn get_mailbox(&self, address: &str) -> Result<Option<Mailbox>>;
+
+    /// Create or update a mailbox with password hash
+    async fn set_mailbox_password(&self, address: &str, password_hash: String) -> Result<()>;
+
+    /// Verify if a mailbox exists and is locked (has a password)
+    async fn is_mailbox_locked(&self, address: &str) -> Result<bool>;
 }

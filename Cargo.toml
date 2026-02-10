@@ -48,6 +48,9 @@ tokio-rustls = "0.26"
 # HTTP client for webhooks
 reqwest = { version = "0.12", features = ["json"] }
 
+# Password hashing
+bcrypt = "0.15"
+
 [dev-dependencies]
 # Testing utilities
 tokio-test = "0.4"
