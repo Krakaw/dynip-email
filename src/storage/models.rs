@@ -298,6 +298,7 @@ pub struct Mailbox {
     pub is_locked: bool,
 }
 
+#[allow(dead_code)]
 impl Mailbox {
     /// Create a new unclaimed mailbox
     pub fn new(address: String) -> Self {
