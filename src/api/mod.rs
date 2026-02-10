@@ -16,8 +16,9 @@ use tracing::info;
 use crate::storage::{models::Email, StorageBackend};
 use crate::webhooks::WebhookTrigger;
 use handlers::{
-    create_webhook, delete_email, delete_webhook, get_email_by_id, get_emails_for_address,
-    get_webhook_by_id, get_webhooks_for_mailbox, test_webhook, update_webhook, AppConfig,
+    check_mailbox_status, claim_mailbox, create_webhook, delete_email, delete_webhook,
+    get_email_by_id, get_emails_for_address, get_webhook_by_id, get_webhooks_for_mailbox,
+    test_webhook, update_webhook, AppConfig,
 };
 use websocket::{websocket_handler, WsState};
 
@@ -47,6 +48,11 @@ pub fn create_router(
         // WebSocket route (needs domain for normalization)
         .route("/api/ws/:address", get(websocket_handler))
         .with_state(ws_state)
+        // Mailbox routes
+        .route("/api/mailbox/:address/status", get(check_mailbox_status))
+        .with_state((storage.clone(), app_config.clone()))
+        .route("/api/mailbox/:address/claim", post(claim_mailbox))
+        .with_state((storage.clone(), app_config.clone()))
         // API routes with combined state (storage + config)
         .route("/api/emails/:address", get(get_emails_for_address))
         .with_state(combined_state)

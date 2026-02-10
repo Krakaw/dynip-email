@@ -257,7 +257,7 @@ async fn run() -> Result<()> {
         }
         Err(e) => {
             error!("❌ Server error: {}", e);
-            return Err(e);
+            Err(e)
         }
     }
 }

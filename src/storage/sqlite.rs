@@ -6,7 +6,7 @@ use std::str::FromStr;
 use tracing::{info, warn};
 
 use super::{
-    models::{Email, Webhook, WebhookEvent},
+    models::{Email, Mailbox, Webhook, WebhookEvent},
     StorageBackend,
 };
 
@@ -84,6 +84,20 @@ impl SqliteBackend {
         sqlx::query(
             r#"
             CREATE INDEX IF NOT EXISTS idx_webhooks_mailbox ON webhooks(mailbox_address)
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create mailboxes table for password protection
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS mailboxes (
+                address TEXT PRIMARY KEY,
+                password_hash TEXT,
+                created_at TEXT NOT NULL,
+                is_locked BOOLEAN DEFAULT 0
+            )
             "#,
         )
         .execute(&pool)
@@ -459,6 +473,77 @@ impl StorageBackend for SqliteBackend {
             .collect();
 
         Ok(webhooks)
+    }
+
+    async fn get_mailbox(&self, address: &str) -> Result<Option<Mailbox>> {
+        let row = sqlx::query_as::<_, (String, Option<String>, String, bool)>(
+            r#"
+            SELECT address, password_hash, created_at, is_locked
+            FROM mailboxes
+            WHERE address = ?
+            "#,
+        )
+        .bind(address)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(address, password_hash, created_at, is_locked)| {
+            let created_at = DateTime::parse_from_rfc3339(&created_at)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc);
+
+            Mailbox {
+                address,
+                password_hash,
+                created_at,
+                is_locked,
+            }
+        }))
+    }
+
+    async fn set_mailbox_password(&self, address: &str, password_hash: String) -> Result<()> {
+        // Check if mailbox exists
+        let existing = self.get_mailbox(address).await?;
+
+        if let Some(mailbox) = existing {
+            // Mailbox already exists and is locked - don't allow changing password
+            if mailbox.is_locked {
+                return Err(anyhow::anyhow!("Mailbox is already locked with a password"));
+            }
+            // Update existing unlocked mailbox
+            sqlx::query(
+                r#"
+                UPDATE mailboxes
+                SET password_hash = ?, is_locked = 1
+                WHERE address = ?
+                "#,
+            )
+            .bind(&password_hash)
+            .bind(address)
+            .execute(&self.pool)
+            .await?;
+        } else {
+            // Create new mailbox
+            sqlx::query(
+                r#"
+                INSERT INTO mailboxes (address, password_hash, created_at, is_locked)
+                VALUES (?, ?, ?, 1)
+                "#,
+            )
+            .bind(address)
+            .bind(&password_hash)
+            .bind(Utc::now().to_rfc3339())
+            .execute(&self.pool)
+            .await?;
+        }
+
+        info!("Set password for mailbox {}", address);
+        Ok(())
+    }
+
+    async fn is_mailbox_locked(&self, address: &str) -> Result<bool> {
+        let mailbox = self.get_mailbox(address).await?;
+        Ok(mailbox.map(|m| m.is_locked).unwrap_or(false))
     }
 }
 
