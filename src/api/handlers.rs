@@ -84,12 +84,16 @@ async fn verify_mailbox_password(
     })?;
 
     // Verify password using bcrypt
-    bcrypt::verify(provided_password, &password_hash).map_err(|e| {
+    let password_matches = bcrypt::verify(provided_password, &password_hash).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Password verification error: {}", e),
         )
     })?;
+
+    if !password_matches {
+        return Err((StatusCode::UNAUTHORIZED, "Incorrect password".to_string()));
+    }
 
     Ok(())
 }

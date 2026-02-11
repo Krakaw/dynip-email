@@ -183,6 +183,7 @@ async function claimMailbox(address, password) {
         if (response.ok) {
             storePassword(address, password);
             closeClaimModal();
+            updateLockStatus(true);
             continueLoadInbox(address, password);
         } else {
             const error = await response.json();
@@ -281,6 +282,7 @@ async function loadInbox() {
     
     if (isLocked) {
         // Mailbox is locked - need password
+        updateLockStatus(true);
         if (storedPassword) {
             // Try stored password
             mailboxPassword = storedPassword;
@@ -297,16 +299,40 @@ async function loadInbox() {
             showUnlockModal(address);
         }
     } else {
-        // Mailbox is unlocked - offer to claim it
-        if (!storedPassword) {
-            showClaimModal(address);
-        } else {
-            // Already claimed previously, just load
-            mailboxPassword = storedPassword;
-            continueLoadInbox(address, storedPassword);
-        }
+        // Mailbox is unlocked - load directly
+        updateLockStatus(false);
+        mailboxPassword = storedPassword;
+        continueLoadInbox(address, storedPassword);
     }
 }
+
+// Update lock status button in status bar
+function updateLockStatus(isLocked) {
+    const lockBtn = document.getElementById('lockMailbox');
+    if (!currentAddress) {
+        lockBtn.style.display = 'none';
+        return;
+    }
+    lockBtn.style.display = '';
+    if (isLocked) {
+        lockBtn.textContent = 'Locked';
+        lockBtn.className = 'lock-btn locked';
+    } else {
+        lockBtn.textContent = 'Lock Mailbox';
+        lockBtn.className = 'lock-btn unlocked';
+    }
+}
+
+// Lock mailbox button click handler
+document.getElementById('lockMailbox').addEventListener('click', async () => {
+    if (!currentAddress) return;
+    const isLocked = await checkMailboxStatus(currentAddress);
+    if (isLocked) {
+        // Already locked, nothing to do
+        return;
+    }
+    showClaimModal(currentAddress);
+});
 
 // Verify if password is correct
 async function verifyPassword(address, password) {
