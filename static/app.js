@@ -430,8 +430,14 @@ function clearStoredPassword(address) {
 // Check mailbox status (locked or unlocked)
 async function checkMailboxStatus(address) {
     try {
+        console.log('Checking mailbox status for:', address);
         const response = await authFetch(`/api/mailbox/${encodeURIComponent(address)}/status`);
+        if (!response.ok) {
+            console.error('Mailbox status check failed:', response.status);
+            return false;
+        }
         const data = await response.json();
+        console.log('Mailbox status:', data);
         return data.is_locked;
     } catch (error) {
         console.error('Failed to check mailbox status:', error);
@@ -575,6 +581,7 @@ async function unlockMailbox(address, password) {
 // Load inbox for the specified email address
 async function loadInbox() {
     const address = emailAddressInput.value.trim();
+    console.log('loadInbox called, address:', address, 'authEnabled:', authEnabled, 'hasToken:', !!authToken);
     
     if (!address) {
         alert('Please enter an address');
@@ -696,16 +703,23 @@ async function verifyPassword(address, password) {
 async function continueLoadInbox(address, password) {
     mailboxPassword = password;
     
+    // Show loading state
+    emailList.innerHTML = '<div class="empty-state"><p>⏳ Loading emails...</p></div>';
+    
     // Fetch emails
     try {
         const passwordParam = password ? `?password=${encodeURIComponent(password)}` : '';
+        console.log('Fetching emails for:', address, 'with auth:', !!authToken);
         const response = await authFetch(`/api/emails/${encodeURIComponent(address)}${passwordParam}`);
         
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            const errorText = await response.text();
+            console.error('API error:', response.status, errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
         
         const data = await response.json();
+        console.log('Loaded emails:', data.emails?.length || 0);
         
         emails = data.emails || [];
         displayEmails(emails);
@@ -718,7 +732,7 @@ async function continueLoadInbox(address, password) {
         loadWebhooks(address);
     } catch (error) {
         console.error('Failed to load emails:', error);
-        emailList.innerHTML = '<div class="empty-state"><p>❌ Failed to load emails</p></div>';
+        emailList.innerHTML = `<div class="empty-state"><p>❌ Failed to load emails</p><p style="font-size: 0.875rem; color: var(--text-secondary);">${escapeHtml(error.message)}</p></div>`;
     }
 }
 
