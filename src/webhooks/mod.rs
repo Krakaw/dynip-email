@@ -365,7 +365,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_webhook_http_delivery_success() {
-        use mockito::{Mock, Server};
+        use mockito::Server;
 
         let mut server = Server::new_async().await;
         let _mock = server
@@ -394,7 +394,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_webhook_http_delivery_failure() {
-        use mockito::{Mock, Server};
+        use mockito::Server;
 
         let mut server = Server::new_async().await;
         let _mock = server
@@ -422,7 +422,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_webhook_http_delivery_timeout() {
-        use mockito::{Mock, Server};
+        use mockito::Server;
 
         let mut server = Server::new_async().await;
         let _mock = server

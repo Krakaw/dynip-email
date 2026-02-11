@@ -584,7 +584,7 @@ mod tests {
         use axum::{
             body::Body,
             http::{Request, StatusCode},
-            routing::{delete, get, post, put},
+            routing::post,
             Router,
         };
         use tempfile::tempdir;
@@ -645,7 +645,7 @@ mod tests {
         use axum::{
             body::Body,
             http::{Request, StatusCode},
-            routing::{delete, get, post, put},
+            routing::post,
             Router,
         };
         use tempfile::tempdir;
@@ -690,7 +690,7 @@ mod tests {
         use axum::{
             body::Body,
             http::{Request, StatusCode},
-            routing::{delete, get, post, put},
+            routing::get,
             Router,
         };
         use tempfile::tempdir;
@@ -743,7 +743,7 @@ mod tests {
         use axum::{
             body::Body,
             http::{Request, StatusCode},
-            routing::{delete, get, post, put},
+            routing::get,
             Router,
         };
         use tempfile::tempdir;
@@ -797,7 +797,7 @@ mod tests {
         use axum::{
             body::Body,
             http::{Request, StatusCode},
-            routing::{delete, get, post, put},
+            routing::get,
             Router,
         };
         use tempfile::tempdir;
@@ -835,7 +835,7 @@ mod tests {
         use axum::{
             body::Body,
             http::{Request, StatusCode},
-            routing::{delete, get, post, put},
+            routing::put,
             Router,
         };
         use tempfile::tempdir;
@@ -899,7 +899,7 @@ mod tests {
         use axum::{
             body::Body,
             http::{Request, StatusCode},
-            routing::{delete, get, post, put},
+            routing::delete,
             Router,
         };
         use tempfile::tempdir;

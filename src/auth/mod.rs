@@ -57,20 +57,6 @@ pub struct LoginRequest {
     pub password: String,
 }
 
-/// Response for successful authentication
-#[derive(Debug, Serialize)]
-pub struct AuthResponse {
-    pub token: String,
-    pub user: UserResponse,
-}
-
-/// User info in response (excludes password)
-#[derive(Debug, Serialize)]
-pub struct UserResponse {
-    pub id: String,
-    pub email: String,
-}
-
 /// Generate a JWT token for a user
 pub fn generate_token(user: &User, config: &AuthConfig) -> Result<String, jsonwebtoken::errors::Error> {
     let now = Utc::now();
@@ -317,6 +303,7 @@ pub async fn status(
 #[derive(Clone, Debug)]
 pub struct AuthenticatedUser {
     pub user_id: String,
+    #[allow(dead_code)]
     pub email: String,
 }
 
@@ -493,5 +480,570 @@ mod tests {
         assert!(is_allowed_domain("user@EXAMPLE.COM", "example.com"));
         assert!(!is_allowed_domain("user@other.com", "example.com"));
         assert!(!is_allowed_domain("user@example.com.evil.com", "example.com"));
+    }
+
+    // --- Handler integration tests ---
+
+    use axum::{
+        body::Body,
+        http::{header, Request},
+        middleware,
+        routing::{get, post},
+        Router,
+    };
+    use tower::util::ServiceExt;
+
+    fn test_auth_config() -> AuthConfig {
+        AuthConfig {
+            enabled: true,
+            jwt_secret: "test-secret-key-for-testing".to_string(),
+            jwt_expiry_hours: 24,
+            auth_domain: None,
+        }
+    }
+
+    async fn test_storage() -> Arc<dyn StorageBackend> {
+        Arc::new(
+            crate::storage::sqlite::SqliteBackend::new("sqlite::memory:")
+                .await
+                .unwrap(),
+        )
+    }
+
+    fn auth_app(storage: Arc<dyn StorageBackend>, config: AuthConfig) -> Router {
+        Router::new()
+            .route("/api/auth/register", post(register))
+            .route("/api/auth/login", post(login))
+            .route("/api/auth/me", get(me))
+            .route("/api/auth/status", get(status))
+            .with_state((storage, config.clone()))
+            .layer(middleware::from_fn_with_state(
+                config,
+                auth_config_middleware,
+            ))
+    }
+
+    async fn register_user(
+        app: &Router,
+        email: &str,
+        password: &str,
+    ) -> axum::http::Response<Body> {
+        let body = serde_json::json!({
+            "email": email,
+            "password": password,
+        });
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    }
+
+    async fn login_user(
+        app: &Router,
+        email: &str,
+        password: &str,
+    ) -> axum::http::Response<Body> {
+        let body = serde_json::json!({
+            "email": email,
+            "password": password,
+        });
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    }
+
+    async fn body_json(response: axum::http::Response<Body>) -> serde_json::Value {
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    // Registration tests
+
+    #[tokio::test]
+    async fn test_register_success() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage, config);
+
+        let response = register_user(&app, "user@example.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let json = body_json(response).await;
+        assert!(json["token"].is_string());
+        assert_eq!(json["user"]["email"], "user@example.com");
+        assert!(json["user"]["id"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_register_auth_disabled() {
+        let storage = test_storage().await;
+        let config = AuthConfig {
+            enabled: false,
+            ..test_auth_config()
+        };
+        let app = auth_app(storage, config);
+
+        let response = register_user(&app, "user@example.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_email() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage, config);
+
+        let response = register_user(&app, "not-an-email", "password123").await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_register_short_password() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage, config);
+
+        let response = register_user(&app, "user@example.com", "short").await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_register_duplicate_email() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage.clone(), config.clone());
+
+        // First registration succeeds
+        let response = register_user(&app, "user@example.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Second registration with same email fails
+        let app2 = auth_app(storage, config);
+        let response = register_user(&app2, "user@example.com", "password456").await;
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn test_register_domain_restriction_allowed() {
+        let storage = test_storage().await;
+        let config = AuthConfig {
+            auth_domain: Some("allowed.com".to_string()),
+            ..test_auth_config()
+        };
+        let app = auth_app(storage, config);
+
+        let response = register_user(&app, "user@allowed.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_register_domain_restriction_blocked() {
+        let storage = test_storage().await;
+        let config = AuthConfig {
+            auth_domain: Some("allowed.com".to_string()),
+            ..test_auth_config()
+        };
+        let app = auth_app(storage, config);
+
+        let response = register_user(&app, "user@blocked.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // Login tests
+
+    #[tokio::test]
+    async fn test_login_success() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage.clone(), config.clone());
+
+        // Register first
+        let response = register_user(&app, "user@example.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Login
+        let app2 = auth_app(storage, config);
+        let response = login_user(&app2, "user@example.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let json = body_json(response).await;
+        assert!(json["token"].is_string());
+        assert_eq!(json["user"]["email"], "user@example.com");
+    }
+
+    #[tokio::test]
+    async fn test_login_auth_disabled() {
+        let storage = test_storage().await;
+        let config = AuthConfig {
+            enabled: false,
+            ..test_auth_config()
+        };
+        let app = auth_app(storage, config);
+
+        let response = login_user(&app, "user@example.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_login_wrong_password() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage.clone(), config.clone());
+
+        // Register
+        let response = register_user(&app, "user@example.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Login with wrong password
+        let app2 = auth_app(storage, config);
+        let response = login_user(&app2, "user@example.com", "wrongpassword").await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_login_nonexistent_user() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage, config);
+
+        let response = login_user(&app, "nobody@example.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // Status tests
+
+    #[tokio::test]
+    async fn test_status_auth_enabled_no_users() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage, config);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = body_json(response).await;
+        assert_eq!(json["auth_enabled"], true);
+        assert_eq!(json["has_users"], false);
+        assert_eq!(json["registration_open"], true);
+    }
+
+    #[tokio::test]
+    async fn test_status_auth_enabled_with_users() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage.clone(), config.clone());
+
+        // Register a user first
+        register_user(&app, "user@example.com", "password123").await;
+
+        let app2 = auth_app(storage, config);
+        let response = app2
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = body_json(response).await;
+        assert_eq!(json["auth_enabled"], true);
+        assert_eq!(json["has_users"], true);
+        assert_eq!(json["registration_open"], false);
+    }
+
+    #[tokio::test]
+    async fn test_status_auth_disabled() {
+        let storage = test_storage().await;
+        let config = AuthConfig {
+            enabled: false,
+            ..test_auth_config()
+        };
+        let app = auth_app(storage, config);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = body_json(response).await;
+        assert_eq!(json["auth_enabled"], false);
+        assert_eq!(json["has_users"], false);
+        assert_eq!(json["registration_open"], false);
+    }
+
+    // Me endpoint tests
+
+    #[tokio::test]
+    async fn test_me_with_valid_token() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage.clone(), config.clone());
+
+        // Register and get token
+        let response = register_user(&app, "user@example.com", "password123").await;
+        let json = body_json(response).await;
+        let token = json["token"].as_str().unwrap();
+
+        // Call /me with token
+        let app2 = auth_app(storage, config);
+        let response = app2
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/me")
+                    .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = body_json(response).await;
+        assert_eq!(json["email"], "user@example.com");
+        assert!(json["id"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_me_without_token() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage, config);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/me")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Should fail since no token and auth is enabled
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_me_with_invalid_token() {
+        let storage = test_storage().await;
+        let config = test_auth_config();
+        let app = auth_app(storage, config);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/me")
+                    .header(header::AUTHORIZATION, "Bearer invalid-token-here")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_me_auth_disabled() {
+        let storage = test_storage().await;
+        let config = AuthConfig {
+            enabled: false,
+            ..test_auth_config()
+        };
+        let app = auth_app(storage, config);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/me")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // Require auth middleware tests
+
+    async fn dummy_handler() -> &'static str {
+        "ok"
+    }
+
+    #[tokio::test]
+    async fn test_require_auth_skips_when_disabled() {
+        let config = AuthConfig {
+            enabled: false,
+            ..test_auth_config()
+        };
+        let app = Router::new()
+            .route("/protected", get(dummy_handler))
+            .layer(middleware::from_fn_with_state(config, require_auth));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_require_auth_blocks_without_token() {
+        let config = test_auth_config();
+        let app = Router::new()
+            .route("/protected", get(dummy_handler))
+            .layer(middleware::from_fn_with_state(config, require_auth));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_require_auth_passes_with_valid_token() {
+        let config = test_auth_config();
+        let user = User::new("test@example.com".to_string(), "hash".to_string());
+        let token = generate_token(&user, &config).unwrap();
+
+        let app = Router::new()
+            .route("/protected", get(dummy_handler))
+            .layer(middleware::from_fn_with_state(config, require_auth));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_require_auth_rejects_invalid_token() {
+        let config = test_auth_config();
+        let app = Router::new()
+            .route("/protected", get(dummy_handler))
+            .layer(middleware::from_fn_with_state(config, require_auth));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .header(header::AUTHORIZATION, "Bearer bad-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // Token claims tests
+
+    #[test]
+    fn test_token_claims_contain_correct_fields() {
+        let config = test_auth_config();
+        let user = User::new("test@example.com".to_string(), "hash".to_string());
+        let token = generate_token(&user, &config).unwrap();
+
+        let claims = verify_token(&token, &config).unwrap();
+        assert_eq!(claims.sub, user.id);
+        assert_eq!(claims.email, "test@example.com");
+        assert!(claims.exp > claims.iat);
+        assert!(claims.exp - claims.iat == 24 * 3600);
+    }
+
+    #[test]
+    fn test_token_expiry_hours_configurable() {
+        let config = AuthConfig {
+            jwt_expiry_hours: 48,
+            ..test_auth_config()
+        };
+        let user = User::new("test@example.com".to_string(), "hash".to_string());
+        let token = generate_token(&user, &config).unwrap();
+
+        let claims = verify_token(&token, &config).unwrap();
+        assert!(claims.exp - claims.iat == 48 * 3600);
+    }
+
+    // Status with domain restriction test
+
+    #[tokio::test]
+    async fn test_status_shows_auth_domain() {
+        let storage = test_storage().await;
+        let config = AuthConfig {
+            auth_domain: Some("corp.com".to_string()),
+            ..test_auth_config()
+        };
+        let app = auth_app(storage, config);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = body_json(response).await;
+        assert_eq!(json["auth_domain"], "corp.com");
     }
 }
