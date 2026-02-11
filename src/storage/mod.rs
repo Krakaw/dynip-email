@@ -66,8 +66,8 @@ pub trait StorageBackend: Send + Sync {
     /// Create a new user
     async fn create_user(&self, user: User) -> Result<()>;
 
-    /// Get a user by username
-    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>>;
+    /// Get a user by email address
+    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>>;
 
     /// Get a user by ID
     async fn get_user_by_id(&self, id: &str) -> Result<Option<User>>;

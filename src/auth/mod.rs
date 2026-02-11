@@ -25,8 +25,8 @@ use crate::storage::{models::User, StorageBackend};
 pub struct Claims {
     /// User ID
     pub sub: String,
-    /// Username
-    pub username: String,
+    /// Email (used as username)
+    pub email: String,
     /// Expiration time (Unix timestamp)
     pub exp: i64,
     /// Issued at (Unix timestamp)
@@ -39,19 +39,21 @@ pub struct AuthConfig {
     pub enabled: bool,
     pub jwt_secret: String,
     pub jwt_expiry_hours: u64,
+    /// Optional domain restriction for registration (e.g., "example.com")
+    pub auth_domain: Option<String>,
 }
 
 /// Request body for registration
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
-    pub username: String,
+    pub email: String,
     pub password: String,
 }
 
 /// Request body for login
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
-    pub username: String,
+    pub email: String,
     pub password: String,
 }
 
@@ -66,7 +68,7 @@ pub struct AuthResponse {
 #[derive(Debug, Serialize)]
 pub struct UserResponse {
     pub id: String,
-    pub username: String,
+    pub email: String,
 }
 
 /// Generate a JWT token for a user
@@ -76,7 +78,7 @@ pub fn generate_token(user: &User, config: &AuthConfig) -> Result<String, jsonwe
 
     let claims = Claims {
         sub: user.id.clone(),
-        username: user.username.clone(),
+        email: user.email.clone(),
         exp: exp.timestamp(),
         iat: now.timestamp(),
     };
@@ -86,6 +88,44 @@ pub fn generate_token(user: &User, config: &AuthConfig) -> Result<String, jsonwe
         &claims,
         &EncodingKey::from_secret(config.jwt_secret.as_bytes()),
     )
+}
+
+/// Validate email format
+fn is_valid_email(email: &str) -> bool {
+    // Basic email validation
+    if email.len() < 3 || email.len() > 254 {
+        return false;
+    }
+    
+    let parts: Vec<&str> = email.split('@').collect();
+    if parts.len() != 2 {
+        return false;
+    }
+    
+    let local = parts[0];
+    let domain = parts[1];
+    
+    // Local part validation
+    if local.is_empty() || local.len() > 64 {
+        return false;
+    }
+    
+    // Domain validation
+    if domain.is_empty() || !domain.contains('.') {
+        return false;
+    }
+    
+    true
+}
+
+/// Validate email domain against allowed domain
+fn is_allowed_domain(email: &str, allowed_domain: &str) -> bool {
+    if let Some(at_pos) = email.rfind('@') {
+        let email_domain = &email[at_pos + 1..];
+        email_domain.eq_ignore_ascii_case(allowed_domain)
+    } else {
+        false
+    }
 }
 
 /// Verify a JWT token and return claims
@@ -111,12 +151,22 @@ pub async fn register(
         ));
     }
 
-    // Validate username
-    if request.username.len() < 3 || request.username.len() > 32 {
+    // Validate email format
+    if !is_valid_email(&request.email) {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Username must be between 3 and 32 characters".to_string(),
+            "Invalid email address format".to_string(),
         ));
+    }
+
+    // Validate email domain if restriction is set
+    if let Some(ref allowed_domain) = config.auth_domain {
+        if !is_allowed_domain(&request.email, allowed_domain) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Registration is only allowed for @{} email addresses", allowed_domain),
+            ));
+        }
     }
 
     // Validate password
@@ -127,14 +177,14 @@ pub async fn register(
         ));
     }
 
-    // Check if username already exists
+    // Check if email already exists
     if storage
-        .get_user_by_username(&request.username)
+        .get_user_by_email(&request.email)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .is_some()
     {
-        return Err((StatusCode::CONFLICT, "Username already exists".to_string()));
+        return Err((StatusCode::CONFLICT, "Email already registered".to_string()));
     }
 
     // Hash password
@@ -146,7 +196,7 @@ pub async fn register(
     })?;
 
     // Create user
-    let user = User::new(request.username.clone(), password_hash);
+    let user = User::new(request.email.clone(), password_hash);
     storage
         .create_user(user.clone())
         .await
@@ -164,7 +214,7 @@ pub async fn register(
         "token": token,
         "user": {
             "id": user.id,
-            "username": user.username
+            "email": user.email
         }
     })))
 }
@@ -181,9 +231,9 @@ pub async fn login(
         ));
     }
 
-    // Find user
+    // Find user by email
     let user = storage
-        .get_user_by_username(&request.username)
+        .get_user_by_email(&request.email)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()))?;
@@ -212,7 +262,7 @@ pub async fn login(
         "token": token,
         "user": {
             "id": user.id,
-            "username": user.username
+            "email": user.email
         }
     })))
 }
@@ -237,7 +287,7 @@ pub async fn me(
 
     Ok(Json(json!({
         "id": user.id,
-        "username": user.username,
+        "email": user.email,
         "created_at": user.created_at
     })))
 }
@@ -258,7 +308,8 @@ pub async fn status(
     Ok(Json(json!({
         "auth_enabled": config.enabled,
         "has_users": has_users,
-        "registration_open": config.enabled && !has_users
+        "registration_open": config.enabled && !has_users,
+        "auth_domain": config.auth_domain
     })))
 }
 
@@ -266,7 +317,7 @@ pub async fn status(
 #[derive(Clone, Debug)]
 pub struct AuthenticatedUser {
     pub user_id: String,
-    pub username: String,
+    pub email: String,
 }
 
 /// Extractor for authenticated requests
@@ -296,7 +347,7 @@ where
         if !auth_config.enabled {
             return Ok(AuthenticatedUser {
                 user_id: "anonymous".to_string(),
-                username: "anonymous".to_string(),
+                email: "anonymous".to_string(),
             });
         }
 
@@ -317,7 +368,7 @@ where
 
         Ok(AuthenticatedUser {
             user_id: claims.sub,
-            username: claims.username,
+            email: claims.email,
         })
     }
 }
@@ -373,14 +424,15 @@ mod tests {
             enabled: true,
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiry_hours: 24,
+            auth_domain: None,
         };
 
-        let user = User::new("testuser".to_string(), "hash".to_string());
+        let user = User::new("test@example.com".to_string(), "hash".to_string());
         let token = generate_token(&user, &config).unwrap();
         
         let claims = verify_token(&token, &config).unwrap();
         assert_eq!(claims.sub, user.id);
-        assert_eq!(claims.username, user.username);
+        assert_eq!(claims.email, user.email);
     }
 
     #[test]
@@ -389,6 +441,7 @@ mod tests {
             enabled: true,
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiry_hours: 24,
+            auth_domain: None,
         };
 
         let result = verify_token("invalid-token", &config);
@@ -401,18 +454,44 @@ mod tests {
             enabled: true,
             jwt_secret: "secret1".to_string(),
             jwt_expiry_hours: 24,
+            auth_domain: None,
         };
 
         let config2 = AuthConfig {
             enabled: true,
             jwt_secret: "secret2".to_string(),
             jwt_expiry_hours: 24,
+            auth_domain: None,
         };
 
-        let user = User::new("testuser".to_string(), "hash".to_string());
+        let user = User::new("test@example.com".to_string(), "hash".to_string());
         let token = generate_token(&user, &config1).unwrap();
         
         let result = verify_token(&token, &config2);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_valid_email() {
+        assert!(is_valid_email("test@example.com"));
+        assert!(is_valid_email("user.name@domain.co.uk"));
+        assert!(is_valid_email("a@b.c"));
+    }
+
+    #[test]
+    fn test_invalid_email() {
+        assert!(!is_valid_email(""));
+        assert!(!is_valid_email("no-at-sign"));
+        assert!(!is_valid_email("@nodomain"));
+        assert!(!is_valid_email("noat@"));
+        assert!(!is_valid_email("no@dots"));
+    }
+
+    #[test]
+    fn test_allowed_domain() {
+        assert!(is_allowed_domain("user@example.com", "example.com"));
+        assert!(is_allowed_domain("user@EXAMPLE.COM", "example.com"));
+        assert!(!is_allowed_domain("user@other.com", "example.com"));
+        assert!(!is_allowed_domain("user@example.com.evil.com", "example.com"));
     }
 }

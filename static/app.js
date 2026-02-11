@@ -113,6 +113,7 @@ async function initAuth() {
         const status = await response.json();
         
         authEnabled = status.auth_enabled;
+        authDomain = status.auth_domain || null;
         
         if (authEnabled) {
             // Show auth UI elements
@@ -188,7 +189,7 @@ function updateAuthUI() {
     
     if (currentUser) {
         authStatus.innerHTML = `
-            <span class="user-info">👤 ${escapeHtml(currentUser.username)}</span>
+            <span class="user-info">👤 ${escapeHtml(currentUser.email)}</span>
             <button class="btn-secondary btn-small" onclick="logout()">Logout</button>
         `;
     } else {
@@ -210,8 +211,8 @@ function showLoginForm() {
             <h2>🔐 Login</h2>
             <form id="loginForm">
                 <div class="form-group">
-                    <label for="loginUsername">Username:</label>
-                    <input type="text" id="loginUsername" placeholder="Enter username" required autofocus>
+                    <label for="loginEmail">Email:</label>
+                    <input type="email" id="loginEmail" placeholder="Enter your email" required autofocus>
                 </div>
                 <div class="form-group">
                     <label for="loginPassword">Password:</label>
@@ -234,9 +235,15 @@ function showLoginForm() {
     });
 }
 
+// Auth domain restriction (set from server)
+let authDomain = null;
+
 // Show register form modal
 function showRegisterForm() {
     closeAuthModal();
+    
+    const domainHint = authDomain ? ` (must be @${authDomain})` : '';
+    const emailPlaceholder = authDomain ? `user@${authDomain}` : 'your@email.com';
     
     const modal = document.createElement('div');
     modal.className = 'auth-modal';
@@ -246,8 +253,8 @@ function showRegisterForm() {
             <h2>📝 Register</h2>
             <form id="registerForm">
                 <div class="form-group">
-                    <label for="registerUsername">Username:</label>
-                    <input type="text" id="registerUsername" placeholder="3-32 characters" required autofocus minlength="3" maxlength="32">
+                    <label for="registerEmail">Email${domainHint}:</label>
+                    <input type="email" id="registerEmail" placeholder="${emailPlaceholder}" required autofocus>
                 </div>
                 <div class="form-group">
                     <label for="registerPassword">Password:</label>
@@ -282,7 +289,7 @@ function closeAuthModal() {
 
 // Handle login form submission
 async function handleLogin() {
-    const username = document.getElementById('loginUsername').value;
+    const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
     const errorDiv = document.getElementById('loginError');
     
@@ -292,7 +299,7 @@ async function handleLogin() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ email, password })
         });
         
         if (response.ok) {
@@ -316,7 +323,7 @@ async function handleLogin() {
 
 // Handle register form submission
 async function handleRegister() {
-    const username = document.getElementById('registerUsername').value;
+    const email = document.getElementById('registerEmail').value;
     const password = document.getElementById('registerPassword').value;
     const confirm = document.getElementById('registerConfirm').value;
     const errorDiv = document.getElementById('registerError');
@@ -333,7 +340,7 @@ async function handleRegister() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ email, password })
         });
         
         if (response.ok) {

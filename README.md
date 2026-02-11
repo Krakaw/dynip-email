@@ -71,6 +71,10 @@ Key configuration options:
 | `REJECT_NON_DOMAIN_EMAILS` | false | Reject emails not addressed to DOMAIN_NAME |
 | `IMAP_ENABLED` | false | Enable IMAP server for email retrieval |
 | `IMAP_PORT` | 143 | IMAP server port |
+| `AUTH_ENABLED` | false | Enable user authentication for API access |
+| `JWT_SECRET` | - | Secret key for JWT tokens (required when auth enabled) |
+| `JWT_EXPIRY_HOURS` | 24 | JWT token expiry time in hours |
+| `AUTH_DOMAIN` | - | Restrict registration to emails from this domain |
 | `RUST_LOG` | info | Log level (trace, debug, info, warn, error) |
 
 For detailed configuration options, see the [Configuration Guide](docs/CONFIGURATION.md).

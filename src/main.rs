@@ -186,10 +186,15 @@ async fn run() -> Result<()> {
         enabled: config.auth_enabled,
         jwt_secret: config.jwt_secret.clone(),
         jwt_expiry_hours: config.jwt_expiry_hours,
+        auth_domain: config.auth_domain.clone(),
     };
 
     if config.auth_enabled {
-        info!("🔐 Authentication enabled - API routes require login");
+        if let Some(ref domain) = config.auth_domain {
+            info!("🔐 Authentication enabled - Registration restricted to @{} emails", domain);
+        } else {
+            info!("🔐 Authentication enabled - API routes require login");
+        }
     } else {
         info!("🔓 Authentication disabled - API routes are public");
     }
@@ -367,6 +372,7 @@ mod tests {
             auth_enabled: false,
             jwt_secret: "test-secret".to_string(),
             jwt_expiry_hours: 24,
+            auth_domain: None,
         })
     }
 

@@ -621,17 +621,17 @@ impl StorageBackend for SqliteBackend {
             "#,
         )
         .bind(&user.id)
-        .bind(&user.username)
+        .bind(&user.email)
         .bind(&user.password_hash)
         .bind(user.created_at.to_rfc3339())
         .execute(&self.pool)
         .await?;
 
-        info!("Created user {}", user.username);
+        info!("Created user {}", user.email);
         Ok(())
     }
 
-    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
+    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
         let row = sqlx::query_as::<_, (String, String, String, String)>(
             r#"
             SELECT id, username, password_hash, created_at
@@ -639,18 +639,18 @@ impl StorageBackend for SqliteBackend {
             WHERE username = ?
             "#,
         )
-        .bind(username)
+        .bind(email)
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(id, username, password_hash, created_at)| {
+        Ok(row.map(|(id, email, password_hash, created_at)| {
             let created_at = DateTime::parse_from_rfc3339(&created_at)
                 .unwrap_or_else(|_| Utc::now().into())
                 .with_timezone(&Utc);
 
             User {
                 id,
-                username,
+                email,
                 password_hash,
                 created_at,
             }
@@ -669,14 +669,14 @@ impl StorageBackend for SqliteBackend {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(id, username, password_hash, created_at)| {
+        Ok(row.map(|(id, email, password_hash, created_at)| {
             let created_at = DateTime::parse_from_rfc3339(&created_at)
                 .unwrap_or_else(|_| Utc::now().into())
                 .with_timezone(&Utc);
 
             User {
                 id,
-                username,
+                email,
                 password_hash,
                 created_at,
             }
