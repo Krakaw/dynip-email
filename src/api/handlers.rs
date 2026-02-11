@@ -247,6 +247,34 @@ pub async fn claim_mailbox(
     })))
 }
 
+/// Release (unclaim) a mailbox by removing its password
+pub async fn release_mailbox(
+    Path(address): Path<String>,
+    State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
+    Json(request): Json<ClaimMailboxRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let normalized_address = config.normalize_address(&address);
+
+    // Verify the current password first
+    verify_mailbox_password(
+        &storage,
+        &normalized_address,
+        Some(&request.password),
+    )
+    .await?;
+
+    // Clear the password
+    storage
+        .clear_mailbox_password(&normalized_address)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(json!({
+        "message": "Mailbox released successfully",
+        "address": normalized_address
+    })))
+}
+
 /// Create webhook request
 #[derive(Debug, Deserialize)]
 pub struct CreateWebhookRequest {

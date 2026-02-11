@@ -183,7 +183,7 @@ async function claimMailbox(address, password) {
         if (response.ok) {
             storePassword(address, password);
             closeClaimModal();
-            updateLockStatus(true);
+            updateClaimStatus(true);
             continueLoadInbox(address, password);
         } else {
             const error = await response.json();
@@ -240,6 +240,7 @@ async function unlockMailbox(address, password) {
         if (response.ok) {
             storePassword(address, password);
             closeUnlockModal();
+            updateClaimStatus(true);
             continueLoadInbox(address, password);
         } else if (response.status === 401) {
             alert('Incorrect password');
@@ -281,13 +282,13 @@ async function loadInbox() {
     const storedPassword = getStoredPassword(address);
     
     if (isLocked) {
-        // Mailbox is locked - need password
-        updateLockStatus(true);
+        // Mailbox is claimed - need password
         if (storedPassword) {
             // Try stored password
             mailboxPassword = storedPassword;
             const passwordWorks = await verifyPassword(address, storedPassword);
             if (passwordWorks) {
+                updateClaimStatus(true);
                 continueLoadInbox(address, storedPassword);
             } else {
                 // Stored password is wrong, clear it and ask for new one
@@ -299,40 +300,68 @@ async function loadInbox() {
             showUnlockModal(address);
         }
     } else {
-        // Mailbox is unlocked - load directly
-        updateLockStatus(false);
+        // Mailbox is unclaimed - load directly
+        updateClaimStatus(false);
         mailboxPassword = storedPassword;
         continueLoadInbox(address, storedPassword);
     }
 }
 
-// Update lock status button in status bar
-function updateLockStatus(isLocked) {
+// Update claim/release button in status bar
+function updateClaimStatus(isClaimed) {
     const lockBtn = document.getElementById('lockMailbox');
     if (!currentAddress) {
         lockBtn.style.display = 'none';
         return;
     }
     lockBtn.style.display = '';
-    if (isLocked) {
-        lockBtn.textContent = 'Locked';
-        lockBtn.className = 'lock-btn locked';
+    if (isClaimed) {
+        lockBtn.textContent = 'Release';
+        lockBtn.className = 'lock-btn release';
     } else {
-        lockBtn.textContent = 'Lock Mailbox';
-        lockBtn.className = 'lock-btn unlocked';
+        lockBtn.textContent = 'Claim';
+        lockBtn.className = 'lock-btn claim';
     }
 }
 
-// Lock mailbox button click handler
+// Claim/release button click handler
 document.getElementById('lockMailbox').addEventListener('click', async () => {
     if (!currentAddress) return;
     const isLocked = await checkMailboxStatus(currentAddress);
     if (isLocked) {
-        // Already locked, nothing to do
+        await releaseMailbox(currentAddress);
+    } else {
+        showClaimModal(currentAddress);
+    }
+});
+
+// Release mailbox (remove password protection)
+async function releaseMailbox(address) {
+    if (!mailboxPassword) {
+        alert('No active session password to authorize release.');
         return;
     }
-    showClaimModal(currentAddress);
-});
+    if (!confirm('Release this mailbox? It will become publicly accessible and anyone could claim it.')) {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/mailbox/${encodeURIComponent(address)}/release`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: mailboxPassword })
+        });
+        if (response.ok) {
+            clearStoredPassword(address);
+            updateClaimStatus(false);
+        } else {
+            const error = await response.text();
+            alert('Failed to release mailbox: ' + error);
+        }
+    } catch (error) {
+        console.error('Failed to release mailbox:', error);
+        alert('Failed to release mailbox');
+    }
+}
 
 // Verify if password is correct
 async function verifyPassword(address, password) {

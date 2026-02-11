@@ -184,25 +184,26 @@ button:hover {
     transition: all 0.2s;
 }
 
-.lock-btn.unlocked {
+.lock-btn.claim {
     background: var(--surface-color);
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
 }
 
-.lock-btn.unlocked:hover {
+.lock-btn.claim:hover {
     border-color: var(--primary-color);
     color: var(--primary-color);
 }
 
-.lock-btn.locked {
-    background: var(--primary-color);
-    color: white;
-    border: 1px solid var(--primary-color);
+.lock-btn.release {
+    background: var(--surface-color);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
 }
 
-.lock-btn.locked:hover {
-    background: var(--primary-hover);
+.lock-btn.release:hover {
+    border-color: var(--danger-color);
+    color: var(--danger-color);
 }
 
 .email-count {
