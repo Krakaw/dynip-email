@@ -18,6 +18,8 @@ pub struct Config {
     pub reject_non_domain_emails: bool,
     pub mcp_enabled: bool,
     pub mcp_port: u16,
+    pub imap_enabled: bool,
+    pub imap_port: u16,
 }
 
 /// SMTP SSL/TLS configuration for Let's Encrypt certificates
@@ -77,6 +79,15 @@ impl Config {
             .unwrap_or_else(|_| "3001".to_string())
             .parse()?;
 
+        let imap_enabled = std::env::var("IMAP_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+
+        let imap_port = std::env::var("IMAP_PORT")
+            .unwrap_or_else(|_| "143".to_string())
+            .parse()?;
+
         // SMTP SSL configuration for Let's Encrypt
         let smtp_ssl_enabled = std::env::var("SMTP_SSL_ENABLED")
             .unwrap_or_else(|_| "false".to_string())
@@ -116,6 +127,8 @@ impl Config {
             reject_non_domain_emails,
             mcp_enabled,
             mcp_port,
+            imap_enabled,
+            imap_port,
         })
     }
 }
@@ -233,6 +246,16 @@ mod tests {
             .parse()
             .unwrap_or(3001);
 
+        let imap_enabled = std::env::var("IMAP_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+
+        let imap_port = std::env::var("IMAP_PORT")
+            .unwrap_or_else(|_| "143".to_string())
+            .parse()
+            .unwrap_or(143);
+
         Ok(Config {
             smtp_port,
             smtp_starttls_port,
@@ -245,6 +268,8 @@ mod tests {
             smtp_ssl,
             mcp_enabled,
             mcp_port,
+            imap_enabled,
+            imap_port,
         })
     }
 
@@ -263,6 +288,8 @@ mod tests {
         env::remove_var("SMTP_SSL_KEY_PATH");
         env::remove_var("MCP_ENABLED");
         env::remove_var("MCP_PORT");
+        env::remove_var("IMAP_ENABLED");
+        env::remove_var("IMAP_PORT");
     }
 
     #[test]
@@ -281,6 +308,8 @@ mod tests {
         assert_eq!(config.smtp_ssl.enabled, false);
         assert_eq!(config.mcp_enabled, false);
         assert_eq!(config.mcp_port, 3001);
+        assert_eq!(config.imap_enabled, false);
+        assert_eq!(config.imap_port, 143);
 
         // Clean up after test
         clear_all_env_vars();
@@ -303,6 +332,8 @@ mod tests {
         env::set_var("SMTP_SSL_KEY_PATH", "/path/to/key.pem");
         env::set_var("MCP_ENABLED", "true");
         env::set_var("MCP_PORT", "3002");
+        env::set_var("IMAP_ENABLED", "true");
+        env::set_var("IMAP_PORT", "1143");
 
         let config = from_env_test().unwrap();
 
@@ -325,6 +356,8 @@ mod tests {
         );
         assert_eq!(config.mcp_enabled, true);
         assert_eq!(config.mcp_port, 3002);
+        assert_eq!(config.imap_enabled, true);
+        assert_eq!(config.imap_port, 1143);
 
         // Clean up after test
         clear_all_env_vars();

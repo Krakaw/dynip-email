@@ -1,5 +1,6 @@
 mod api;
 mod config;
+mod imap;
 mod mcp;
 mod smtp;
 mod storage;
@@ -202,6 +203,20 @@ async fn run() -> Result<()> {
         info!("🔌 MCP server disabled");
     }
 
+    // Start IMAP server if enabled
+    if config.imap_enabled {
+        info!("📬 Starting IMAP server on port {}...", config.imap_port);
+        let imap_server = imap::ImapServer::new(storage.clone(), config.domain_name.clone());
+        let imap_port = config.imap_port;
+        tokio::spawn(async move {
+            if let Err(e) = imap_server.start(imap_port).await {
+                error!("❌ IMAP server error: {}", e);
+            }
+        });
+    } else {
+        info!("📬 IMAP server disabled");
+    }
+
     // Start API server
     info!("🚀 Starting API server on port {}...", config.api_port);
 
@@ -332,6 +347,8 @@ mod tests {
             smtp_ssl,
             mcp_enabled: false,
             mcp_port: 3001,
+            imap_enabled: false,
+            imap_port: 143,
         })
     }
 
