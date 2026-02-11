@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::str::FromStr;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use super::{
     models::{Email, Mailbox, Webhook, WebhookEvent},
@@ -560,6 +560,32 @@ impl StorageBackend for SqliteBackend {
 
         info!("Cleared password for mailbox {}", address);
         Ok(())
+    }
+
+    async fn verify_mailbox_password(&self, address: &str, password: &str) -> Result<bool> {
+        let mailbox = self.get_mailbox(address).await?;
+
+        match mailbox {
+            Some(m) => {
+                if let Some(hash) = m.password_hash {
+                    // Verify password against stored hash
+                    match bcrypt::verify(password, &hash) {
+                        Ok(valid) => Ok(valid),
+                        Err(e) => {
+                            error!("Password verification error for {}: {}", address, e);
+                            Ok(false)
+                        }
+                    }
+                } else {
+                    // No password set - reject login
+                    Ok(false)
+                }
+            }
+            None => {
+                // Mailbox doesn't exist - reject login
+                Ok(false)
+            }
+        }
     }
 }
 

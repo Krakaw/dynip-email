@@ -15,6 +15,7 @@ A lightweight, temporary mail server that accepts emails to any address with a m
 🔗 **Webhook Support** - Per-mailbox webhook events for email arrivals, deletions, and reads  
 🤖 **MCP Integration** - Model Context Protocol server for LLM/AI assistant integration  
 🔒 **Password Protection** - First-claim model to lock mailboxes with passwords  
+📬 **IMAP Server** - Retrieve emails via standard IMAP protocol with authentication  
 
 ## Quick Start
 
@@ -68,6 +69,8 @@ Key configuration options:
 | `SMTP_SSL_KEY_PATH` | - | Path to SSL private key (privkey.pem) |
 | `EMAIL_RETENTION_HOURS` | - | Auto-delete emails older than X hours (optional) |
 | `REJECT_NON_DOMAIN_EMAILS` | false | Reject emails not addressed to DOMAIN_NAME |
+| `IMAP_ENABLED` | false | Enable IMAP server for email retrieval |
+| `IMAP_PORT` | 143 | IMAP server port |
 | `RUST_LOG` | info | Log level (trace, debug, info, warn, error) |
 
 For detailed configuration options, see the [Configuration Guide](docs/CONFIGURATION.md).
@@ -224,6 +227,40 @@ Configure webhooks to receive real-time notifications for email events:
   }
 }
 ```
+
+## IMAP Server
+
+Enable IMAP access to retrieve emails using standard email clients:
+
+### Configuration
+```bash
+IMAP_ENABLED=true
+IMAP_PORT=143
+```
+
+### Authentication
+IMAP authentication uses the same mailbox passwords as the web interface:
+1. First claim a mailbox by visiting the web UI
+2. Set a password for the mailbox
+3. Use the mailbox address (without @domain) as username and your password
+
+### Example Client Configuration
+```
+Server: your-server.com
+Port: 143
+Username: myaddress (or myaddress@domain.com)
+Password: your-mailbox-password
+Security: None (or STARTTLS if SSL enabled)
+```
+
+### Supported Commands
+- `LOGIN` - Authenticate with username/password
+- `LIST` / `LSUB` - List mailboxes
+- `SELECT` / `EXAMINE` - Select a mailbox
+- `FETCH` - Retrieve email content
+- `SEARCH` - Search emails
+- `UID FETCH` / `UID SEARCH` - UID-based operations
+- `CLOSE` / `LOGOUT` - Close connection
 
 ## MCP (Model Context Protocol) Integration
 

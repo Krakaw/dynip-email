@@ -57,4 +57,7 @@ pub trait StorageBackend: Send + Sync {
 
     /// Clear the password and unlock a mailbox
     async fn clear_mailbox_password(&self, address: &str) -> Result<()>;
+
+    /// Verify a mailbox password
+    async fn verify_mailbox_password(&self, address: &str, password: &str) -> Result<bool>;
 }
