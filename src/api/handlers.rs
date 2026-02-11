@@ -256,12 +256,7 @@ pub async fn release_mailbox(
     let normalized_address = config.normalize_address(&address);
 
     // Verify the current password first
-    verify_mailbox_password(
-        &storage,
-        &normalized_address,
-        Some(&request.password),
-    )
-    .await?;
+    verify_mailbox_password(&storage, &normalized_address, Some(&request.password)).await?;
 
     // Clear the password
     storage
