@@ -183,6 +183,7 @@ async function claimMailbox(address, password) {
         if (response.ok) {
             storePassword(address, password);
             closeClaimModal();
+            updateClaimStatus(true);
             continueLoadInbox(address, password);
         } else {
             const error = await response.json();
@@ -239,6 +240,7 @@ async function unlockMailbox(address, password) {
         if (response.ok) {
             storePassword(address, password);
             closeUnlockModal();
+            updateClaimStatus(true);
             continueLoadInbox(address, password);
         } else if (response.status === 401) {
             alert('Incorrect password');
@@ -280,12 +282,13 @@ async function loadInbox() {
     const storedPassword = getStoredPassword(address);
     
     if (isLocked) {
-        // Mailbox is locked - need password
+        // Mailbox is claimed - need password
         if (storedPassword) {
             // Try stored password
             mailboxPassword = storedPassword;
             const passwordWorks = await verifyPassword(address, storedPassword);
             if (passwordWorks) {
+                updateClaimStatus(true);
                 continueLoadInbox(address, storedPassword);
             } else {
                 // Stored password is wrong, clear it and ask for new one
@@ -297,14 +300,66 @@ async function loadInbox() {
             showUnlockModal(address);
         }
     } else {
-        // Mailbox is unlocked - offer to claim it
-        if (!storedPassword) {
-            showClaimModal(address);
+        // Mailbox is unclaimed - load directly
+        updateClaimStatus(false);
+        mailboxPassword = storedPassword;
+        continueLoadInbox(address, storedPassword);
+    }
+}
+
+// Update claim/release button in status bar
+function updateClaimStatus(isClaimed) {
+    const lockBtn = document.getElementById('lockMailbox');
+    if (!currentAddress) {
+        lockBtn.style.display = 'none';
+        return;
+    }
+    lockBtn.style.display = '';
+    if (isClaimed) {
+        lockBtn.textContent = 'Release';
+        lockBtn.className = 'lock-btn release';
+    } else {
+        lockBtn.textContent = 'Claim';
+        lockBtn.className = 'lock-btn claim';
+    }
+}
+
+// Claim/release button click handler
+document.getElementById('lockMailbox').addEventListener('click', async () => {
+    if (!currentAddress) return;
+    const isLocked = await checkMailboxStatus(currentAddress);
+    if (isLocked) {
+        await releaseMailbox(currentAddress);
+    } else {
+        showClaimModal(currentAddress);
+    }
+});
+
+// Release mailbox (remove password protection)
+async function releaseMailbox(address) {
+    if (!mailboxPassword) {
+        alert('No active session password to authorize release.');
+        return;
+    }
+    if (!confirm('Release this mailbox? It will become publicly accessible and anyone could claim it.')) {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/mailbox/${encodeURIComponent(address)}/release`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: mailboxPassword })
+        });
+        if (response.ok) {
+            clearStoredPassword(address);
+            updateClaimStatus(false);
         } else {
-            // Already claimed previously, just load
-            mailboxPassword = storedPassword;
-            continueLoadInbox(address, storedPassword);
+            const error = await response.text();
+            alert('Failed to release mailbox: ' + error);
         }
+    } catch (error) {
+        console.error('Failed to release mailbox:', error);
+        alert('Failed to release mailbox');
     }
 }
 

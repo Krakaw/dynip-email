@@ -175,6 +175,37 @@ button:hover {
     50% { opacity: 0.5; }
 }
 
+.lock-btn {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.lock-btn.claim {
+    background: var(--surface-color);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.lock-btn.claim:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.lock-btn.release {
+    background: var(--surface-color);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.lock-btn.release:hover {
+    border-color: var(--danger-color);
+    color: var(--danger-color);
+}
+
 .email-count {
     color: var(--text-secondary);
     font-weight: 600;

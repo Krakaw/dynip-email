@@ -54,4 +54,7 @@ pub trait StorageBackend: Send + Sync {
 
     /// Verify if a mailbox exists and is locked (has a password)
     async fn is_mailbox_locked(&self, address: &str) -> Result<bool>;
+
+    /// Clear the password and unlock a mailbox
+    async fn clear_mailbox_password(&self, address: &str) -> Result<()>;
 }

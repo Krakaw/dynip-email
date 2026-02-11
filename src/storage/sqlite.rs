@@ -545,6 +545,22 @@ impl StorageBackend for SqliteBackend {
         let mailbox = self.get_mailbox(address).await?;
         Ok(mailbox.map(|m| m.is_locked).unwrap_or(false))
     }
+
+    async fn clear_mailbox_password(&self, address: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE mailboxes
+            SET password_hash = NULL, is_locked = 0
+            WHERE address = ?
+            "#,
+        )
+        .bind(address)
+        .execute(&self.pool)
+        .await?;
+
+        info!("Cleared password for mailbox {}", address);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

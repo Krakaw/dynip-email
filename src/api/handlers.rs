@@ -84,12 +84,16 @@ async fn verify_mailbox_password(
     })?;
 
     // Verify password using bcrypt
-    bcrypt::verify(provided_password, &password_hash).map_err(|e| {
+    let password_matches = bcrypt::verify(provided_password, &password_hash).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Password verification error: {}", e),
         )
     })?;
+
+    if !password_matches {
+        return Err((StatusCode::UNAUTHORIZED, "Incorrect password".to_string()));
+    }
 
     Ok(())
 }
@@ -239,6 +243,34 @@ pub async fn claim_mailbox(
 
     Ok(Json(json!({
         "message": "Mailbox claimed successfully",
+        "address": normalized_address
+    })))
+}
+
+/// Release (unclaim) a mailbox by removing its password
+pub async fn release_mailbox(
+    Path(address): Path<String>,
+    State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
+    Json(request): Json<ClaimMailboxRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let normalized_address = config.normalize_address(&address);
+
+    // Verify the current password first
+    verify_mailbox_password(
+        &storage,
+        &normalized_address,
+        Some(&request.password),
+    )
+    .await?;
+
+    // Clear the password
+    storage
+        .clear_mailbox_password(&normalized_address)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(json!({
+        "message": "Mailbox released successfully",
         "address": normalized_address
     })))
 }
