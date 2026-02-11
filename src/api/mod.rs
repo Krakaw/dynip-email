@@ -2,6 +2,7 @@ pub mod handlers;
 pub mod websocket;
 
 use axum::{
+    middleware,
     routing::{delete, get, post, put},
     Router,
 };
@@ -13,6 +14,7 @@ use tower_http::{
 };
 use tracing::info;
 
+use crate::auth::{self, AuthConfig};
 use crate::storage::{models::Email, StorageBackend};
 use crate::webhooks::WebhookTrigger;
 use handlers::{
@@ -29,6 +31,7 @@ pub fn create_router(
     deletion_sender: broadcast::Sender<(String, String)>,
     domain_name: String,
     webhook_trigger: WebhookTrigger,
+    auth_config: AuthConfig,
 ) -> Router {
     let ws_state = WsState {
         email_receiver: email_sender.clone(),
@@ -44,10 +47,11 @@ pub fn create_router(
     // Create state for delete email route (storage + webhook_trigger)
     let delete_email_state = (storage.clone(), webhook_trigger);
 
-    Router::new()
-        // WebSocket route (needs domain for normalization)
-        .route("/api/ws/:address", get(websocket_handler))
-        .with_state(ws_state)
+    // Create auth state
+    let auth_state = (storage.clone(), auth_config.clone());
+
+    // Build protected routes (require auth when enabled)
+    let protected_routes = Router::new()
         // Mailbox routes
         .route("/api/mailbox/:address/status", get(check_mailbox_status))
         .with_state((storage.clone(), app_config.clone()))
@@ -76,7 +80,34 @@ pub fn create_router(
         .route("/api/webhook/:id", delete(delete_webhook))
         .with_state(storage.clone())
         .route("/api/webhook/:id/test", post(test_webhook))
-        .with_state(storage)
+        .with_state(storage.clone())
+        // Apply auth middleware to protected routes
+        .layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth::require_auth,
+        ));
+
+    // Build auth routes (public, no auth required)
+    let auth_routes = Router::new()
+        .route("/api/auth/status", get(auth::status))
+        .route("/api/auth/register", post(auth::register))
+        .route("/api/auth/login", post(auth::login))
+        .route("/api/auth/me", get(auth::me))
+        .with_state(auth_state)
+        // Apply auth config middleware so AuthenticatedUser extractor can access config
+        .layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth::auth_config_middleware,
+        ));
+
+    Router::new()
+        // WebSocket route (needs domain for normalization)
+        .route("/api/ws/:address", get(websocket_handler))
+        .with_state(ws_state)
+        // Merge auth routes (public)
+        .merge(auth_routes)
+        // Merge protected routes
+        .merge(protected_routes)
         // Serve static files
         .nest_service("/", ServeDir::new("static"))
         // CORS for development

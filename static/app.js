@@ -16,6 +16,11 @@ let shouldReconnect = false;
 // Favicon management
 let originalFavicon = null;
 
+// Authentication state
+let authEnabled = false;
+let authToken = null;
+let currentUser = null;
+
 // DOM elements
 const emailAddressInput = document.getElementById('emailAddress');
 const loadEmailsBtn = document.getElementById('loadEmails');
@@ -75,20 +80,349 @@ function enableLightMode() {
     localStorage.setItem('theme', 'light');
 }
 
-// Initialize from URL on page load
-window.addEventListener('DOMContentLoaded', () => {
-    // Initialize theme
-    initTheme();
-    
-    // Load mailbox from URL if present
+// Load mailbox from URL query parameter if present
+function loadMailboxFromUrl() {
     const urlParams = new URLSearchParams(window.location.search);
     const mailbox = urlParams.get('mailbox');
     
-    if (mailbox) {
+    if (mailbox && emailAddressInput) {
         emailAddressInput.value = mailbox;
         loadInbox();
     }
+}
+
+// Initialize from URL on page load
+window.addEventListener('DOMContentLoaded', async () => {
+    // Initialize theme
+    initTheme();
+    
+    // Check auth status and initialize
+    await initAuth();
+    
+    // Only auto-load mailbox if user is already authenticated (or auth disabled)
+    // If auth is required and user isn't logged in, loadMailboxFromUrl will be
+    // called after successful login/registration
+    if (!authEnabled || authToken) {
+        loadMailboxFromUrl();
+    }
 });
+
+// ============================================================================
+// Authentication Functions
+// ============================================================================
+
+// Initialize authentication
+async function initAuth() {
+    // Load stored token
+    authToken = localStorage.getItem('auth_token');
+    
+    // Check auth status from server
+    try {
+        const response = await fetch('/api/auth/status');
+        const status = await response.json();
+        
+        authEnabled = status.auth_enabled;
+        authDomain = status.auth_domain || null;
+        
+        if (authEnabled) {
+            // Show auth UI elements
+            showAuthUI();
+            
+            if (authToken) {
+                // Verify token is still valid
+                const valid = await verifyAuthToken();
+                if (!valid) {
+                    authToken = null;
+                    localStorage.removeItem('auth_token');
+                    showLoginForm();
+                } else {
+                    updateAuthUI();
+                }
+            } else if (status.registration_open) {
+                // No users yet, show registration
+                showRegisterForm();
+            } else {
+                // Show login form
+                showLoginForm();
+            }
+        }
+    } catch (error) {
+        console.error('Failed to check auth status:', error);
+    }
+}
+
+// Verify auth token is valid
+async function verifyAuthToken() {
+    if (!authToken) return false;
+    
+    try {
+        const response = await fetch('/api/auth/me', {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            currentUser = await response.json();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        return false;
+    }
+}
+
+// Show auth UI elements in header
+function showAuthUI() {
+    const header = document.querySelector('header');
+    
+    // Check if auth container already exists
+    if (document.getElementById('authContainer')) return;
+    
+    const authContainer = document.createElement('div');
+    authContainer.id = 'authContainer';
+    authContainer.className = 'auth-container';
+    authContainer.innerHTML = `
+        <div id="authStatus" class="auth-status"></div>
+    `;
+    
+    // Insert after theme toggle
+    const themeToggle = document.getElementById('themeToggle');
+    themeToggle.parentNode.insertBefore(authContainer, themeToggle);
+}
+
+// Update auth UI based on current state
+function updateAuthUI() {
+    const authStatus = document.getElementById('authStatus');
+    if (!authStatus) return;
+    
+    if (currentUser) {
+        authStatus.innerHTML = `
+            <span class="user-info">👤 ${escapeHtml(currentUser.email)}</span>
+            <button class="btn-secondary btn-small" onclick="logout()">Logout</button>
+        `;
+    } else {
+        authStatus.innerHTML = `
+            <button class="btn-primary btn-small" onclick="showLoginForm()">Login</button>
+        `;
+    }
+}
+
+// Show login form modal
+function showLoginForm() {
+    closeAuthModal();
+    
+    const modal = document.createElement('div');
+    modal.className = 'auth-modal';
+    modal.id = 'authModal';
+    modal.innerHTML = `
+        <div class="auth-modal-content">
+            <h2>🔐 Login</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginEmail">Email:</label>
+                    <input type="email" id="loginEmail" placeholder="Enter your email" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password:</label>
+                    <input type="password" id="loginPassword" placeholder="Enter password" required>
+                </div>
+                <div id="loginError" class="form-error" style="display: none;"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Login</button>
+                    <button type="button" class="btn-secondary" onclick="showRegisterForm()">Register</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await handleLogin();
+    });
+}
+
+// Auth domain restriction (set from server)
+let authDomain = null;
+
+// Show register form modal
+function showRegisterForm() {
+    closeAuthModal();
+    
+    const domainHint = authDomain ? ` (must be @${authDomain})` : '';
+    const emailPlaceholder = authDomain ? `user@${authDomain}` : 'your@email.com';
+    
+    const modal = document.createElement('div');
+    modal.className = 'auth-modal';
+    modal.id = 'authModal';
+    modal.innerHTML = `
+        <div class="auth-modal-content">
+            <h2>📝 Register</h2>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="registerEmail">Email${domainHint}:</label>
+                    <input type="email" id="registerEmail" placeholder="${emailPlaceholder}" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">Password:</label>
+                    <input type="password" id="registerPassword" placeholder="At least 8 characters" required minlength="8">
+                </div>
+                <div class="form-group">
+                    <label for="registerConfirm">Confirm Password:</label>
+                    <input type="password" id="registerConfirm" placeholder="Confirm password" required>
+                </div>
+                <div id="registerError" class="form-error" style="display: none;"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Register</button>
+                    <button type="button" class="btn-secondary" onclick="showLoginForm()">Back to Login</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await handleRegister();
+    });
+}
+
+// Close auth modal
+function closeAuthModal() {
+    const modal = document.getElementById('authModal');
+    if (modal) modal.remove();
+}
+
+// Handle login form submission
+async function handleLogin() {
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    const errorDiv = document.getElementById('loginError');
+    
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, password })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            authToken = data.token;
+            currentUser = data.user;
+            localStorage.setItem('auth_token', authToken);
+            closeAuthModal();
+            updateAuthUI();
+            
+            // After login, check if there's a mailbox in URL to load
+            loadMailboxFromUrl();
+        } else {
+            const error = await response.text();
+            errorDiv.textContent = error || 'Login failed';
+            errorDiv.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        errorDiv.textContent = 'Login failed. Please try again.';
+        errorDiv.style.display = 'block';
+    }
+}
+
+// Handle register form submission
+async function handleRegister() {
+    const email = document.getElementById('registerEmail').value;
+    const password = document.getElementById('registerPassword').value;
+    const confirm = document.getElementById('registerConfirm').value;
+    const errorDiv = document.getElementById('registerError');
+    
+    if (password !== confirm) {
+        errorDiv.textContent = 'Passwords do not match';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, password })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            authToken = data.token;
+            currentUser = data.user;
+            localStorage.setItem('auth_token', authToken);
+            closeAuthModal();
+            updateAuthUI();
+            
+            // After registration, check if there's a mailbox in URL to load
+            loadMailboxFromUrl();
+        } else {
+            const error = await response.text();
+            errorDiv.textContent = error || 'Registration failed';
+            errorDiv.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        errorDiv.textContent = 'Registration failed. Please try again.';
+        errorDiv.style.display = 'block';
+    }
+}
+
+// Logout
+function logout() {
+    authToken = null;
+    currentUser = null;
+    localStorage.removeItem('auth_token');
+    updateAuthUI();
+    showLoginForm();
+}
+
+// Get auth headers for API calls
+function getAuthHeaders() {
+    const headers = {
+        'Content-Type': 'application/json',
+    };
+    
+    if (authEnabled && authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    
+    return headers;
+}
+
+// Wrapper for fetch that adds auth headers
+async function authFetch(url, options = {}) {
+    if (!options.headers) {
+        options.headers = {};
+    }
+    
+    if (authEnabled && authToken) {
+        options.headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    
+    const response = await fetch(url, options);
+    
+    // If we get 401, token might be expired
+    if (response.status === 401 && authEnabled) {
+        authToken = null;
+        currentUser = null;
+        localStorage.removeItem('auth_token');
+        updateAuthUI();
+        showLoginForm();
+        throw new Error('Authentication required');
+    }
+    
+    return response;
+}
 
 // Password management
 function getStoredPassword(address) {
@@ -111,8 +445,14 @@ function clearStoredPassword(address) {
 // Check mailbox status (locked or unlocked)
 async function checkMailboxStatus(address) {
     try {
-        const response = await fetch(`/api/mailbox/${encodeURIComponent(address)}/status`);
+        console.log('Checking mailbox status for:', address);
+        const response = await authFetch(`/api/mailbox/${encodeURIComponent(address)}/status`);
+        if (!response.ok) {
+            console.error('Mailbox status check failed:', response.status);
+            return false;
+        }
         const data = await response.json();
+        console.log('Mailbox status:', data);
         return data.is_locked;
     } catch (error) {
         console.error('Failed to check mailbox status:', error);
@@ -172,7 +512,7 @@ function closeClaimModal() {
 // Claim mailbox with password
 async function claimMailbox(address, password) {
     try {
-        const response = await fetch(`/api/mailbox/${encodeURIComponent(address)}/claim`, {
+        const response = await authFetch(`/api/mailbox/${encodeURIComponent(address)}/claim`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -235,7 +575,7 @@ function closeUnlockModal() {
 async function unlockMailbox(address, password) {
     // Try to fetch emails with the password
     try {
-        const response = await fetch(`/api/emails/${encodeURIComponent(address)}?password=${encodeURIComponent(password)}`);
+        const response = await authFetch(`/api/emails/${encodeURIComponent(address)}?password=${encodeURIComponent(password)}`);
         
         if (response.ok) {
             storePassword(address, password);
@@ -256,6 +596,7 @@ async function unlockMailbox(address, password) {
 // Load inbox for the specified email address
 async function loadInbox() {
     const address = emailAddressInput.value.trim();
+    console.log('loadInbox called, address:', address, 'authEnabled:', authEnabled, 'hasToken:', !!authToken);
     
     if (!address) {
         alert('Please enter an address');
@@ -310,6 +651,8 @@ async function loadInbox() {
 // Update claim/release button in status bar
 function updateClaimStatus(isClaimed) {
     const lockBtn = document.getElementById('lockMailbox');
+    if (!lockBtn) return; // Element might not exist in some contexts
+    
     if (!currentAddress) {
         lockBtn.style.display = 'none';
         return;
@@ -325,15 +668,18 @@ function updateClaimStatus(isClaimed) {
 }
 
 // Claim/release button click handler
-document.getElementById('lockMailbox').addEventListener('click', async () => {
-    if (!currentAddress) return;
-    const isLocked = await checkMailboxStatus(currentAddress);
-    if (isLocked) {
-        await releaseMailbox(currentAddress);
-    } else {
-        showClaimModal(currentAddress);
-    }
-});
+const lockMailboxBtn = document.getElementById('lockMailbox');
+if (lockMailboxBtn) {
+    lockMailboxBtn.addEventListener('click', async () => {
+        if (!currentAddress) return;
+        const isLocked = await checkMailboxStatus(currentAddress);
+        if (isLocked) {
+            await releaseMailbox(currentAddress);
+        } else {
+            showClaimModal(currentAddress);
+        }
+    });
+}
 
 // Release mailbox (remove password protection)
 async function releaseMailbox(address) {
@@ -345,7 +691,7 @@ async function releaseMailbox(address) {
         return;
     }
     try {
-        const response = await fetch(`/api/mailbox/${encodeURIComponent(address)}/release`, {
+        const response = await authFetch(`/api/mailbox/${encodeURIComponent(address)}/release`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password: mailboxPassword })
@@ -366,7 +712,7 @@ async function releaseMailbox(address) {
 // Verify if password is correct
 async function verifyPassword(address, password) {
     try {
-        const response = await fetch(`/api/emails/${encodeURIComponent(address)}?password=${encodeURIComponent(password)}`);
+        const response = await authFetch(`/api/emails/${encodeURIComponent(address)}?password=${encodeURIComponent(password)}`);
         return response.ok;
     } catch (error) {
         return false;
@@ -377,16 +723,23 @@ async function verifyPassword(address, password) {
 async function continueLoadInbox(address, password) {
     mailboxPassword = password;
     
+    // Show loading state
+    emailList.innerHTML = '<div class="empty-state"><p>⏳ Loading emails...</p></div>';
+    
     // Fetch emails
     try {
         const passwordParam = password ? `?password=${encodeURIComponent(password)}` : '';
-        const response = await fetch(`/api/emails/${encodeURIComponent(address)}${passwordParam}`);
+        console.log('Fetching emails for:', address, 'with auth:', !!authToken);
+        const response = await authFetch(`/api/emails/${encodeURIComponent(address)}${passwordParam}`);
         
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            const errorText = await response.text();
+            console.error('API error:', response.status, errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
         
         const data = await response.json();
+        console.log('Loaded emails:', data.emails?.length || 0);
         
         emails = data.emails || [];
         displayEmails(emails);
@@ -399,7 +752,7 @@ async function continueLoadInbox(address, password) {
         loadWebhooks(address);
     } catch (error) {
         console.error('Failed to load emails:', error);
-        emailList.innerHTML = '<div class="empty-state"><p>❌ Failed to load emails</p></div>';
+        emailList.innerHTML = `<div class="empty-state"><p>❌ Failed to load emails</p><p style="font-size: 0.875rem; color: var(--text-secondary);">${escapeHtml(error.message)}</p></div>`;
     }
 }
 
@@ -673,7 +1026,7 @@ async function checkAndReconnectIfNeeded() {
         // Fetch latest emails to ensure we have the most recent state
         try {
             console.log('Fetching latest emails after reconnection...');
-            const response = await fetch(`/api/emails/${encodeURIComponent(currentAddress)}`);
+            const response = await authFetch(`/api/emails/${encodeURIComponent(currentAddress)}`);
             const data = await response.json();
             
             emails = data.emails || [];
@@ -898,7 +1251,7 @@ async function deleteEmail(emailId) {
     }
     
     try {
-        const response = await fetch(`/api/email/${emailId}`, {
+        const response = await authFetch(`/api/email/${emailId}`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -954,7 +1307,7 @@ async function loadWebhooks(address) {
     
     try {
         const passwordParam = mailboxPassword ? `?password=${encodeURIComponent(mailboxPassword)}` : '';
-        const response = await fetch(`/api/webhooks/${encodeURIComponent(address)}${passwordParam}`);
+        const response = await authFetch(`/api/webhooks/${encodeURIComponent(address)}${passwordParam}`);
         const data = await response.json();
         
         webhooks = data.webhooks || [];
@@ -1064,7 +1417,7 @@ async function createWebhook() {
             requestBody.password = mailboxPassword;
         }
         
-        const response = await fetch('/api/webhooks', {
+        const response = await authFetch('/api/webhooks', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1087,7 +1440,7 @@ async function createWebhook() {
 // Test webhook
 async function testWebhook(webhookId) {
     try {
-        const response = await fetch(`/api/webhook/${webhookId}/test`, {
+        const response = await authFetch(`/api/webhook/${webhookId}/test`, {
             method: 'POST'
         });
         
@@ -1160,7 +1513,7 @@ async function updateWebhook(webhookId) {
     }
     
     try {
-        const response = await fetch(`/api/webhook/${webhookId}`, {
+        const response = await authFetch(`/api/webhook/${webhookId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1191,7 +1544,7 @@ async function deleteWebhook(webhookId) {
     }
     
     try {
-        const response = await fetch(`/api/webhook/${webhookId}`, {
+        const response = await authFetch(`/api/webhook/${webhookId}`, {
             method: 'DELETE'
         });
         
