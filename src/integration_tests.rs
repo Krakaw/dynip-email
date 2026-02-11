@@ -10,7 +10,6 @@ mod integration_tests {
     use std::sync::Arc;
     use tempfile::tempdir;
 
-
     /// Integration test for complete webhook flow
     #[tokio::test]
     async fn test_webhook_integration_flow() {

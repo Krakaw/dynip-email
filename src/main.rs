@@ -191,7 +191,10 @@ async fn run() -> Result<()> {
 
     if config.auth_enabled {
         if let Some(ref domain) = config.auth_domain {
-            info!("🔐 Authentication enabled - Registration restricted to @{} emails", domain);
+            info!(
+                "🔐 Authentication enabled - Registration restricted to @{} emails",
+                domain
+            );
         } else {
             info!("🔐 Authentication enabled - API routes require login");
         }

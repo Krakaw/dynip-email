@@ -58,7 +58,10 @@ pub struct LoginRequest {
 }
 
 /// Generate a JWT token for a user
-pub fn generate_token(user: &User, config: &AuthConfig) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn generate_token(
+    user: &User,
+    config: &AuthConfig,
+) -> Result<String, jsonwebtoken::errors::Error> {
     let now = Utc::now();
     let exp = now + Duration::hours(config.jwt_expiry_hours as i64);
 
@@ -82,25 +85,25 @@ fn is_valid_email(email: &str) -> bool {
     if email.len() < 3 || email.len() > 254 {
         return false;
     }
-    
+
     let parts: Vec<&str> = email.split('@').collect();
     if parts.len() != 2 {
         return false;
     }
-    
+
     let local = parts[0];
     let domain = parts[1];
-    
+
     // Local part validation
     if local.is_empty() || local.len() > 64 {
         return false;
     }
-    
+
     // Domain validation
     if domain.is_empty() || !domain.contains('.') {
         return false;
     }
-    
+
     true
 }
 
@@ -115,7 +118,10 @@ fn is_allowed_domain(email: &str, allowed_domain: &str) -> bool {
 }
 
 /// Verify a JWT token and return claims
-pub fn verify_token(token: &str, config: &AuthConfig) -> Result<Claims, jsonwebtoken::errors::Error> {
+pub fn verify_token(
+    token: &str,
+    config: &AuthConfig,
+) -> Result<Claims, jsonwebtoken::errors::Error> {
     let token_data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(config.jwt_secret.as_bytes()),
@@ -150,7 +156,10 @@ pub async fn register(
         if !is_allowed_domain(&request.email, allowed_domain) {
             return Err((
                 StatusCode::BAD_REQUEST,
-                format!("Registration is only allowed for @{} email addresses", allowed_domain),
+                format!(
+                    "Registration is only allowed for @{} email addresses",
+                    allowed_domain
+                ),
             ));
         }
     }
@@ -343,11 +352,19 @@ where
             .headers
             .get(AUTHORIZATION)
             .and_then(|h| h.to_str().ok())
-            .ok_or_else(|| (StatusCode::UNAUTHORIZED, "Missing authorization header".to_string()))?;
+            .ok_or_else(|| {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    "Missing authorization header".to_string(),
+                )
+            })?;
 
-        let token = auth_header
-            .strip_prefix("Bearer ")
-            .ok_or_else(|| (StatusCode::UNAUTHORIZED, "Invalid authorization header format".to_string()))?;
+        let token = auth_header.strip_prefix("Bearer ").ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                "Invalid authorization header format".to_string(),
+            )
+        })?;
 
         // Verify token
         let claims = verify_token(token, &auth_config)
@@ -397,7 +414,11 @@ pub async fn require_auth(
                 }
             }
         }
-        _ => (StatusCode::UNAUTHORIZED, "Missing or invalid authorization header").into_response(),
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            "Missing or invalid authorization header",
+        )
+            .into_response(),
     }
 }
 
@@ -416,7 +437,7 @@ mod tests {
 
         let user = User::new("test@example.com".to_string(), "hash".to_string());
         let token = generate_token(&user, &config).unwrap();
-        
+
         let claims = verify_token(&token, &config).unwrap();
         assert_eq!(claims.sub, user.id);
         assert_eq!(claims.email, user.email);
@@ -453,7 +474,7 @@ mod tests {
 
         let user = User::new("test@example.com".to_string(), "hash".to_string());
         let token = generate_token(&user, &config1).unwrap();
-        
+
         let result = verify_token(&token, &config2);
         assert!(result.is_err());
     }
@@ -479,7 +500,10 @@ mod tests {
         assert!(is_allowed_domain("user@example.com", "example.com"));
         assert!(is_allowed_domain("user@EXAMPLE.COM", "example.com"));
         assert!(!is_allowed_domain("user@other.com", "example.com"));
-        assert!(!is_allowed_domain("user@example.com.evil.com", "example.com"));
+        assert!(!is_allowed_domain(
+            "user@example.com.evil.com",
+            "example.com"
+        ));
     }
 
     // --- Handler integration tests ---
@@ -545,11 +569,7 @@ mod tests {
             .unwrap()
     }
 
-    async fn login_user(
-        app: &Router,
-        email: &str,
-        password: &str,
-    ) -> axum::http::Response<Body> {
+    async fn login_user(app: &Router, email: &str, password: &str) -> axum::http::Response<Body> {
         let body = serde_json::json!({
             "email": email,
             "password": password,
