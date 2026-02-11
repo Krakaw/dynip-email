@@ -32,6 +32,18 @@ impl AppConfig {
             format!("{}@{}", input, self.domain_name)
         }
     }
+
+    /// Extract just the local part (username) from an email address
+    /// Used for mailbox storage - mailboxes are keyed by username only,
+    /// allowing multiple domains to map to the same mailbox
+    pub fn extract_local_part(&self, input: &str) -> String {
+        let input = input.trim();
+        if input.contains('@') {
+            input.split('@').next().unwrap_or(input).to_string()
+        } else {
+            input.to_string()
+        }
+    }
 }
 
 /// Query parameters for password-protected endpoints
@@ -104,12 +116,14 @@ pub async fn get_emails_for_address(
     Query(params): Query<PasswordQuery>,
     State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    // Normalize the address (append domain if not present)
+    // Get local part for mailbox password verification, full address for email lookup
+    let local_part = config.extract_local_part(&address);
     let normalized_address = config.normalize_address(&address);
 
-    // Verify password if mailbox is locked
-    verify_mailbox_password(&storage, &normalized_address, params.password.as_deref()).await?;
+    // Verify password if mailbox is locked (mailboxes keyed by username only)
+    verify_mailbox_password(&storage, &local_part, params.password.as_deref()).await?;
 
+    // Fetch emails by full address (emails stored with full "to" address)
     match storage.get_emails_for_address(&normalized_address).await {
         Ok(emails) => Ok(Json(json!({ "emails": emails }))),
         Err(e) => Err((
@@ -193,15 +207,16 @@ pub async fn check_mailbox_status(
     Path(address): Path<String>,
     State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let normalized_address = config.normalize_address(&address);
+    // Mailboxes are keyed by username only (local part)
+    let local_part = config.extract_local_part(&address);
 
     let is_locked = storage
-        .is_mailbox_locked(&normalized_address)
+        .is_mailbox_locked(&local_part)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(json!({
-        "address": normalized_address,
+        "address": local_part,
         "is_locked": is_locked
     })))
 }
@@ -212,11 +227,12 @@ pub async fn claim_mailbox(
     State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
     Json(request): Json<ClaimMailboxRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let normalized_address = config.normalize_address(&address);
+    // Mailboxes are keyed by username only (local part)
+    let local_part = config.extract_local_part(&address);
 
     // Check if mailbox is already locked
     let is_locked = storage
-        .is_mailbox_locked(&normalized_address)
+        .is_mailbox_locked(&local_part)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -235,15 +251,15 @@ pub async fn claim_mailbox(
         )
     })?;
 
-    // Set mailbox password
+    // Set mailbox password (keyed by username only)
     storage
-        .set_mailbox_password(&normalized_address, password_hash)
+        .set_mailbox_password(&local_part, password_hash)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(json!({
         "message": "Mailbox claimed successfully",
-        "address": normalized_address
+        "address": local_part
     })))
 }
 
@@ -253,20 +269,21 @@ pub async fn release_mailbox(
     State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
     Json(request): Json<ClaimMailboxRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let normalized_address = config.normalize_address(&address);
+    // Mailboxes are keyed by username only (local part)
+    let local_part = config.extract_local_part(&address);
 
     // Verify the current password first
-    verify_mailbox_password(&storage, &normalized_address, Some(&request.password)).await?;
+    verify_mailbox_password(&storage, &local_part, Some(&request.password)).await?;
 
     // Clear the password
     storage
-        .clear_mailbox_password(&normalized_address)
+        .clear_mailbox_password(&local_part)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(json!({
         "message": "Mailbox released successfully",
-        "address": normalized_address
+        "address": local_part
     })))
 }
 
@@ -534,6 +551,31 @@ mod tests {
 
         // Test with domain only
         assert_eq!(config.normalize_address("@example.com"), "@example.com");
+    }
+
+    #[test]
+    fn test_extract_local_part() {
+        let config = AppConfig {
+            domain_name: "example.com".to_string(),
+        };
+
+        // Test extracting local part from full address
+        assert_eq!(config.extract_local_part("user@example.com"), "user");
+        assert_eq!(config.extract_local_part("user@other.com"), "user");
+
+        // Test username without domain returns as-is
+        assert_eq!(config.extract_local_part("user"), "user");
+
+        // Test trimming whitespace
+        assert_eq!(config.extract_local_part("  user  "), "user");
+        assert_eq!(config.extract_local_part("  user@domain.com  "), "user");
+
+        // Test empty string
+        assert_eq!(config.extract_local_part(""), "");
+
+        // Test edge cases
+        assert_eq!(config.extract_local_part("@"), "");
+        assert_eq!(config.extract_local_part("@example.com"), "");
     }
 
     #[tokio::test]
