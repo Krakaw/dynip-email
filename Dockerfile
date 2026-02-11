@@ -24,6 +24,9 @@ RUN cargo build --release && rm -rf src
 COPY src ./src
 COPY static ./static
 
+# Remove the dummy binary so cargo is forced to rebuild with real source
+RUN rm -f target/release/deps/dynip_email*
+
 # Build the actual application
 RUN cargo build --release
 
