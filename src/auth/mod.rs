@@ -156,17 +156,9 @@ pub async fn register(
     // Validate email domain if restriction is set
     if let Some(ref allowed_domains) = config.auth_domains {
         if !is_allowed_domain(&request.email, allowed_domains) {
-            let domain_list = if allowed_domains.len() == 1 {
-                format!("@{}", allowed_domains[0])
-            } else {
-                format!("@{}", allowed_domains.join(", @"))
-            };
             return Err((
                 StatusCode::BAD_REQUEST,
-                format!(
-                    "Registration is only allowed for {} email addresses",
-                    domain_list
-                ),
+                "Registration is not allowed for this email domain".to_string(),
             ));
         }
     }
@@ -311,7 +303,7 @@ pub async fn status(
         "auth_enabled": config.enabled,
         "has_users": has_users,
         "registration_open": config.enabled && !has_users,
-        "auth_domains": config.auth_domains
+        "domain_restricted": config.auth_domains.is_some()
     })))
 }
 
@@ -1086,7 +1078,7 @@ mod tests {
     // Status with domain restriction test
 
     #[tokio::test]
-    async fn test_status_shows_auth_domains() {
+    async fn test_status_shows_domain_restricted() {
         let storage = test_storage().await;
         let config = AuthConfig {
             auth_domains: Some(vec!["corp.com".to_string(), "company.com".to_string()]),
@@ -1106,8 +1098,30 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         let json = body_json(response).await;
-        assert!(json["auth_domains"].is_array());
-        assert_eq!(json["auth_domains"][0], "corp.com");
-        assert_eq!(json["auth_domains"][1], "company.com");
+        assert_eq!(json["domain_restricted"], true);
+    }
+
+    #[tokio::test]
+    async fn test_status_no_domain_restriction() {
+        let storage = test_storage().await;
+        let config = AuthConfig {
+            auth_domains: None,
+            ..test_auth_config()
+        };
+        let app = auth_app(storage, config);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = body_json(response).await;
+        assert_eq!(json["domain_restricted"], false);
     }
 }

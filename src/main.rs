@@ -190,18 +190,8 @@ async fn run() -> Result<()> {
     };
 
     if config.auth_enabled {
-        if let Some(ref domains) = config.auth_domains {
-            if domains.len() == 1 {
-                info!(
-                    "🔐 Authentication enabled - Registration restricted to @{} emails",
-                    domains[0]
-                );
-            } else {
-                info!(
-                    "🔐 Authentication enabled - Registration restricted to @{} emails",
-                    domains.join(", @")
-                );
-            }
+        if config.auth_domains.is_some() {
+            info!("🔐 Authentication enabled - Registration restricted to approved domains");
         } else {
             info!("🔐 Authentication enabled - API routes require login");
         }
