@@ -553,9 +553,9 @@ fn parse_login_args(args: &str) -> Option<(String, String)> {
     let mut parts = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
-    let mut chars = args.chars().peekable();
+    let chars = args.chars().peekable();
 
-    while let Some(c) = chars.next() {
+    for c in chars {
         match c {
             '"' => {
                 in_quotes = !in_quotes;
