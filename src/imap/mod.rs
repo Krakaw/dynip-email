@@ -144,6 +144,7 @@ impl ImapConnection {
             "NOOP" => self.cmd_noop(tag).await,
             "LOGOUT" => self.cmd_logout(tag).await,
             "LOGIN" => self.cmd_login(tag, args).await,
+            "AUTHENTICATE" => self.cmd_authenticate(tag, args).await,
             "LIST" => self.cmd_list(tag, args).await,
             "LSUB" => self.cmd_lsub(tag, args).await,
             "SELECT" => self.cmd_select(tag, args).await,
@@ -176,6 +177,102 @@ impl ImapConnection {
             .await?;
         // Signal to close the connection
         Err(anyhow::anyhow!("Client logged out"))
+    }
+
+    async fn cmd_authenticate(&mut self, tag: &str, args: &str) -> Result<()> {
+        let mechanism = args.trim().to_uppercase();
+        
+        if mechanism != "PLAIN" {
+            return self
+                .send_line(&format!("{} NO Unsupported authentication mechanism", tag))
+                .await;
+        }
+
+        // Send continuation request
+        self.send_line("+").await?;
+
+        // Read the base64-encoded credentials
+        let mut line = String::new();
+        match self.stream.read_line(&mut line).await {
+            Ok(0) => {
+                return Err(anyhow::anyhow!("Client disconnected during authentication"));
+            }
+            Ok(_) => {
+                let line = line.trim();
+                debug!("IMAP AUTHENTICATE received credentials");
+
+                // Decode base64 credentials
+                // PLAIN format: \0username\0password (authorization-id\0authentication-id\0password)
+                use base64::{Engine as _, engine::general_purpose::STANDARD};
+                
+                let decoded = match STANDARD.decode(line) {
+                    Ok(d) => d,
+                    Err(_) => {
+                        return self
+                            .send_line(&format!("{} NO Invalid base64 encoding", tag))
+                            .await;
+                    }
+                };
+
+                // Parse the PLAIN credentials (split by null bytes)
+                let parts: Vec<&[u8]> = decoded.split(|&b| b == 0).collect();
+                
+                // PLAIN format: authzid\0authcid\0password (authzid may be empty)
+                let (username, password) = if parts.len() >= 3 {
+                    // Use authcid (parts[1]) as username, parts[2] as password
+                    let username = String::from_utf8_lossy(parts[1]).to_string();
+                    let password = String::from_utf8_lossy(parts[2]).to_string();
+                    (username, password)
+                } else if parts.len() == 2 {
+                    // Fallback: just username and password
+                    let username = String::from_utf8_lossy(parts[0]).to_string();
+                    let password = String::from_utf8_lossy(parts[1]).to_string();
+                    (username, password)
+                } else {
+                    return self
+                        .send_line(&format!("{} NO Invalid PLAIN credentials format", tag))
+                        .await;
+                };
+
+                debug!("IMAP AUTHENTICATE PLAIN for user: {}", username);
+
+                // Extract just the local part if domain is included
+                let mailbox_name = if username.contains('@') {
+                    username.split('@').next().unwrap_or(&username)
+                } else {
+                    &username
+                };
+
+                // Verify credentials against storage
+                match self
+                    .storage
+                    .verify_mailbox_password(mailbox_name, &password)
+                    .await
+                {
+                    Ok(true) => {
+                        self.state = ImapState::Authenticated;
+                        self.authenticated_user = Some(mailbox_name.to_string());
+                        info!("IMAP user authenticated via PLAIN: {}", mailbox_name);
+                        self.send_line(&format!("{} OK AUTHENTICATE completed", tag))
+                            .await
+                    }
+                    Ok(false) => {
+                        warn!("IMAP AUTHENTICATE failed for user: {}", username);
+                        self.send_line(&format!("{} NO AUTHENTICATE failed", tag))
+                            .await
+                    }
+                    Err(e) => {
+                        error!("IMAP AUTHENTICATE error: {}", e);
+                        self.send_line(&format!("{} NO AUTHENTICATE failed", tag))
+                            .await
+                    }
+                }
+            }
+            Err(e) => {
+                error!("IMAP read error during AUTHENTICATE: {}", e);
+                Err(anyhow::anyhow!("Read error during authentication"))
+            }
+        }
     }
 
     async fn cmd_login(&mut self, tag: &str, args: &str) -> Result<()> {
