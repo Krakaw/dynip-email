@@ -80,6 +80,17 @@ function enableLightMode() {
     localStorage.setItem('theme', 'light');
 }
 
+// Load mailbox from URL query parameter if present
+function loadMailboxFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const mailbox = urlParams.get('mailbox');
+    
+    if (mailbox && emailAddressInput) {
+        emailAddressInput.value = mailbox;
+        loadInbox();
+    }
+}
+
 // Initialize from URL on page load
 window.addEventListener('DOMContentLoaded', async () => {
     // Initialize theme
@@ -88,13 +99,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Check auth status and initialize
     await initAuth();
     
-    // Load mailbox from URL if present
-    const urlParams = new URLSearchParams(window.location.search);
-    const mailbox = urlParams.get('mailbox');
-    
-    if (mailbox) {
-        emailAddressInput.value = mailbox;
-        loadInbox();
+    // Only auto-load mailbox if user is already authenticated (or auth disabled)
+    // If auth is required and user isn't logged in, loadMailboxFromUrl will be
+    // called after successful login/registration
+    if (!authEnabled || authToken) {
+        loadMailboxFromUrl();
     }
 });
 
@@ -309,6 +318,9 @@ async function handleLogin() {
             localStorage.setItem('auth_token', authToken);
             closeAuthModal();
             updateAuthUI();
+            
+            // After login, check if there's a mailbox in URL to load
+            loadMailboxFromUrl();
         } else {
             const error = await response.text();
             errorDiv.textContent = error || 'Login failed';
@@ -350,6 +362,9 @@ async function handleRegister() {
             localStorage.setItem('auth_token', authToken);
             closeAuthModal();
             updateAuthUI();
+            
+            // After registration, check if there's a mailbox in URL to load
+            loadMailboxFromUrl();
         } else {
             const error = await response.text();
             errorDiv.textContent = error || 'Registration failed';
