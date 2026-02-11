@@ -234,22 +234,25 @@ impl ImapConnection {
 
                 debug!("IMAP AUTHENTICATE PLAIN for user: {}", username);
 
-                // Extract just the local part if domain is included
+                // Extract just the local part for storage, but build full address for verification
                 let mailbox_name = if username.contains('@') {
-                    username.split('@').next().unwrap_or(&username)
+                    username.split('@').next().unwrap_or(&username).to_string()
                 } else {
-                    &username
+                    username.clone()
                 };
+
+                // Build full email address for verification (mailboxes are stored with domain)
+                let full_address = format!("{}@{}", mailbox_name, self.domain_name);
 
                 // Verify credentials against storage
                 match self
                     .storage
-                    .verify_mailbox_password(mailbox_name, &password)
+                    .verify_mailbox_password(&full_address, &password)
                     .await
                 {
                     Ok(true) => {
                         self.state = ImapState::Authenticated;
-                        self.authenticated_user = Some(mailbox_name.to_string());
+                        self.authenticated_user = Some(mailbox_name.clone());
                         info!("IMAP user authenticated via PLAIN: {}", mailbox_name);
                         self.send_line(&format!("{} OK AUTHENTICATE completed", tag))
                             .await
@@ -289,22 +292,25 @@ impl ImapConnection {
         debug!("IMAP LOGIN attempt for user: {}", username);
 
         // The username should be the mailbox address (e.g., "user" or "user@domain.com")
-        // Extract just the local part if domain is included
+        // Extract just the local part for storage, but build full address for verification
         let mailbox_name = if username.contains('@') {
-            username.split('@').next().unwrap_or(&username)
+            username.split('@').next().unwrap_or(&username).to_string()
         } else {
-            &username
+            username.clone()
         };
+
+        // Build full email address for verification (mailboxes are stored with domain)
+        let full_address = format!("{}@{}", mailbox_name, self.domain_name);
 
         // Verify credentials against storage
         match self
             .storage
-            .verify_mailbox_password(mailbox_name, &password)
+            .verify_mailbox_password(&full_address, &password)
             .await
         {
             Ok(true) => {
                 self.state = ImapState::Authenticated;
-                self.authenticated_user = Some(mailbox_name.to_string());
+                self.authenticated_user = Some(mailbox_name.clone());
                 info!("IMAP user authenticated: {}", mailbox_name);
                 self.send_line(&format!("{} OK LOGIN completed", tag)).await
             }
