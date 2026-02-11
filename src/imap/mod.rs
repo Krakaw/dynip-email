@@ -181,7 +181,7 @@ impl ImapConnection {
 
     async fn cmd_authenticate(&mut self, tag: &str, args: &str) -> Result<()> {
         let mechanism = args.trim().to_uppercase();
-        
+
         if mechanism != "PLAIN" {
             return self
                 .send_line(&format!("{} NO Unsupported authentication mechanism", tag))
@@ -201,8 +201,8 @@ impl ImapConnection {
 
                 // Decode base64 credentials
                 // PLAIN format: \0username\0password (authorization-id\0authentication-id\0password)
-                use base64::{Engine as _, engine::general_purpose::STANDARD};
-                
+                use base64::{engine::general_purpose::STANDARD, Engine as _};
+
                 let decoded = match STANDARD.decode(line) {
                     Ok(d) => d,
                     Err(_) => {
@@ -214,7 +214,7 @@ impl ImapConnection {
 
                 // Parse the PLAIN credentials (split by null bytes)
                 let parts: Vec<&[u8]> = decoded.split(|&b| b == 0).collect();
-                
+
                 // PLAIN format: authzid\0authcid\0password (authzid may be empty)
                 let (username, password) = if parts.len() >= 3 {
                     // Use authcid (parts[1]) as username, parts[2] as password
