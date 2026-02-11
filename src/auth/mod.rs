@@ -502,10 +502,7 @@ mod tests {
         assert!(is_allowed_domain("user@company.com", &domains));
         assert!(is_allowed_domain("user@COMPANY.COM", &domains));
         assert!(!is_allowed_domain("user@other.com", &domains));
-        assert!(!is_allowed_domain(
-            "user@example.com.evil.com",
-            &domains
-        ));
+        assert!(!is_allowed_domain("user@example.com.evil.com", &domains));
     }
 
     // --- Handler integration tests ---
