@@ -16,6 +16,11 @@ let shouldReconnect = false;
 // Favicon management
 let originalFavicon = null;
 
+// Authentication state
+let authEnabled = false;
+let authToken = null;
+let currentUser = null;
+
 // DOM elements
 const emailAddressInput = document.getElementById('emailAddress');
 const loadEmailsBtn = document.getElementById('loadEmails');
@@ -76,9 +81,12 @@ function enableLightMode() {
 }
 
 // Initialize from URL on page load
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
     // Initialize theme
     initTheme();
+    
+    // Check auth status and initialize
+    await initAuth();
     
     // Load mailbox from URL if present
     const urlParams = new URLSearchParams(window.location.search);
@@ -89,6 +97,310 @@ window.addEventListener('DOMContentLoaded', () => {
         loadInbox();
     }
 });
+
+// ============================================================================
+// Authentication Functions
+// ============================================================================
+
+// Initialize authentication
+async function initAuth() {
+    // Load stored token
+    authToken = localStorage.getItem('auth_token');
+    
+    // Check auth status from server
+    try {
+        const response = await fetch('/api/auth/status');
+        const status = await response.json();
+        
+        authEnabled = status.auth_enabled;
+        
+        if (authEnabled) {
+            // Show auth UI elements
+            showAuthUI();
+            
+            if (authToken) {
+                // Verify token is still valid
+                const valid = await verifyAuthToken();
+                if (!valid) {
+                    authToken = null;
+                    localStorage.removeItem('auth_token');
+                    showLoginForm();
+                } else {
+                    updateAuthUI();
+                }
+            } else if (status.registration_open) {
+                // No users yet, show registration
+                showRegisterForm();
+            } else {
+                // Show login form
+                showLoginForm();
+            }
+        }
+    } catch (error) {
+        console.error('Failed to check auth status:', error);
+    }
+}
+
+// Verify auth token is valid
+async function verifyAuthToken() {
+    if (!authToken) return false;
+    
+    try {
+        const response = await fetch('/api/auth/me', {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            currentUser = await response.json();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        return false;
+    }
+}
+
+// Show auth UI elements in header
+function showAuthUI() {
+    const header = document.querySelector('header');
+    
+    // Check if auth container already exists
+    if (document.getElementById('authContainer')) return;
+    
+    const authContainer = document.createElement('div');
+    authContainer.id = 'authContainer';
+    authContainer.className = 'auth-container';
+    authContainer.innerHTML = `
+        <div id="authStatus" class="auth-status"></div>
+    `;
+    
+    // Insert after theme toggle
+    const themeToggle = document.getElementById('themeToggle');
+    themeToggle.parentNode.insertBefore(authContainer, themeToggle);
+}
+
+// Update auth UI based on current state
+function updateAuthUI() {
+    const authStatus = document.getElementById('authStatus');
+    if (!authStatus) return;
+    
+    if (currentUser) {
+        authStatus.innerHTML = `
+            <span class="user-info">👤 ${escapeHtml(currentUser.username)}</span>
+            <button class="btn-secondary btn-small" onclick="logout()">Logout</button>
+        `;
+    } else {
+        authStatus.innerHTML = `
+            <button class="btn-primary btn-small" onclick="showLoginForm()">Login</button>
+        `;
+    }
+}
+
+// Show login form modal
+function showLoginForm() {
+    closeAuthModal();
+    
+    const modal = document.createElement('div');
+    modal.className = 'auth-modal';
+    modal.id = 'authModal';
+    modal.innerHTML = `
+        <div class="auth-modal-content">
+            <h2>🔐 Login</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginUsername">Username:</label>
+                    <input type="text" id="loginUsername" placeholder="Enter username" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password:</label>
+                    <input type="password" id="loginPassword" placeholder="Enter password" required>
+                </div>
+                <div id="loginError" class="form-error" style="display: none;"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Login</button>
+                    <button type="button" class="btn-secondary" onclick="showRegisterForm()">Register</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await handleLogin();
+    });
+}
+
+// Show register form modal
+function showRegisterForm() {
+    closeAuthModal();
+    
+    const modal = document.createElement('div');
+    modal.className = 'auth-modal';
+    modal.id = 'authModal';
+    modal.innerHTML = `
+        <div class="auth-modal-content">
+            <h2>📝 Register</h2>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="registerUsername">Username:</label>
+                    <input type="text" id="registerUsername" placeholder="3-32 characters" required autofocus minlength="3" maxlength="32">
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">Password:</label>
+                    <input type="password" id="registerPassword" placeholder="At least 8 characters" required minlength="8">
+                </div>
+                <div class="form-group">
+                    <label for="registerConfirm">Confirm Password:</label>
+                    <input type="password" id="registerConfirm" placeholder="Confirm password" required>
+                </div>
+                <div id="registerError" class="form-error" style="display: none;"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Register</button>
+                    <button type="button" class="btn-secondary" onclick="showLoginForm()">Back to Login</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await handleRegister();
+    });
+}
+
+// Close auth modal
+function closeAuthModal() {
+    const modal = document.getElementById('authModal');
+    if (modal) modal.remove();
+}
+
+// Handle login form submission
+async function handleLogin() {
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('loginPassword').value;
+    const errorDiv = document.getElementById('loginError');
+    
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username, password })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            authToken = data.token;
+            currentUser = data.user;
+            localStorage.setItem('auth_token', authToken);
+            closeAuthModal();
+            updateAuthUI();
+        } else {
+            const error = await response.text();
+            errorDiv.textContent = error || 'Login failed';
+            errorDiv.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        errorDiv.textContent = 'Login failed. Please try again.';
+        errorDiv.style.display = 'block';
+    }
+}
+
+// Handle register form submission
+async function handleRegister() {
+    const username = document.getElementById('registerUsername').value;
+    const password = document.getElementById('registerPassword').value;
+    const confirm = document.getElementById('registerConfirm').value;
+    const errorDiv = document.getElementById('registerError');
+    
+    if (password !== confirm) {
+        errorDiv.textContent = 'Passwords do not match';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username, password })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            authToken = data.token;
+            currentUser = data.user;
+            localStorage.setItem('auth_token', authToken);
+            closeAuthModal();
+            updateAuthUI();
+        } else {
+            const error = await response.text();
+            errorDiv.textContent = error || 'Registration failed';
+            errorDiv.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        errorDiv.textContent = 'Registration failed. Please try again.';
+        errorDiv.style.display = 'block';
+    }
+}
+
+// Logout
+function logout() {
+    authToken = null;
+    currentUser = null;
+    localStorage.removeItem('auth_token');
+    updateAuthUI();
+    showLoginForm();
+}
+
+// Get auth headers for API calls
+function getAuthHeaders() {
+    const headers = {
+        'Content-Type': 'application/json',
+    };
+    
+    if (authEnabled && authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    
+    return headers;
+}
+
+// Wrapper for fetch that adds auth headers
+async function authFetch(url, options = {}) {
+    if (!options.headers) {
+        options.headers = {};
+    }
+    
+    if (authEnabled && authToken) {
+        options.headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    
+    const response = await fetch(url, options);
+    
+    // If we get 401, token might be expired
+    if (response.status === 401 && authEnabled) {
+        authToken = null;
+        currentUser = null;
+        localStorage.removeItem('auth_token');
+        updateAuthUI();
+        showLoginForm();
+        throw new Error('Authentication required');
+    }
+    
+    return response;
+}
 
 // Password management
 function getStoredPassword(address) {
@@ -111,7 +423,7 @@ function clearStoredPassword(address) {
 // Check mailbox status (locked or unlocked)
 async function checkMailboxStatus(address) {
     try {
-        const response = await fetch(`/api/mailbox/${encodeURIComponent(address)}/status`);
+        const response = await authFetch(`/api/mailbox/${encodeURIComponent(address)}/status`);
         const data = await response.json();
         return data.is_locked;
     } catch (error) {
@@ -172,7 +484,7 @@ function closeClaimModal() {
 // Claim mailbox with password
 async function claimMailbox(address, password) {
     try {
-        const response = await fetch(`/api/mailbox/${encodeURIComponent(address)}/claim`, {
+        const response = await authFetch(`/api/mailbox/${encodeURIComponent(address)}/claim`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -235,7 +547,7 @@ function closeUnlockModal() {
 async function unlockMailbox(address, password) {
     // Try to fetch emails with the password
     try {
-        const response = await fetch(`/api/emails/${encodeURIComponent(address)}?password=${encodeURIComponent(password)}`);
+        const response = await authFetch(`/api/emails/${encodeURIComponent(address)}?password=${encodeURIComponent(password)}`);
         
         if (response.ok) {
             storePassword(address, password);
@@ -345,7 +657,7 @@ async function releaseMailbox(address) {
         return;
     }
     try {
-        const response = await fetch(`/api/mailbox/${encodeURIComponent(address)}/release`, {
+        const response = await authFetch(`/api/mailbox/${encodeURIComponent(address)}/release`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password: mailboxPassword })
@@ -366,7 +678,7 @@ async function releaseMailbox(address) {
 // Verify if password is correct
 async function verifyPassword(address, password) {
     try {
-        const response = await fetch(`/api/emails/${encodeURIComponent(address)}?password=${encodeURIComponent(password)}`);
+        const response = await authFetch(`/api/emails/${encodeURIComponent(address)}?password=${encodeURIComponent(password)}`);
         return response.ok;
     } catch (error) {
         return false;
@@ -380,7 +692,7 @@ async function continueLoadInbox(address, password) {
     // Fetch emails
     try {
         const passwordParam = password ? `?password=${encodeURIComponent(password)}` : '';
-        const response = await fetch(`/api/emails/${encodeURIComponent(address)}${passwordParam}`);
+        const response = await authFetch(`/api/emails/${encodeURIComponent(address)}${passwordParam}`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -673,7 +985,7 @@ async function checkAndReconnectIfNeeded() {
         // Fetch latest emails to ensure we have the most recent state
         try {
             console.log('Fetching latest emails after reconnection...');
-            const response = await fetch(`/api/emails/${encodeURIComponent(currentAddress)}`);
+            const response = await authFetch(`/api/emails/${encodeURIComponent(currentAddress)}`);
             const data = await response.json();
             
             emails = data.emails || [];
@@ -898,7 +1210,7 @@ async function deleteEmail(emailId) {
     }
     
     try {
-        const response = await fetch(`/api/email/${emailId}`, {
+        const response = await authFetch(`/api/email/${emailId}`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -954,7 +1266,7 @@ async function loadWebhooks(address) {
     
     try {
         const passwordParam = mailboxPassword ? `?password=${encodeURIComponent(mailboxPassword)}` : '';
-        const response = await fetch(`/api/webhooks/${encodeURIComponent(address)}${passwordParam}`);
+        const response = await authFetch(`/api/webhooks/${encodeURIComponent(address)}${passwordParam}`);
         const data = await response.json();
         
         webhooks = data.webhooks || [];
@@ -1064,7 +1376,7 @@ async function createWebhook() {
             requestBody.password = mailboxPassword;
         }
         
-        const response = await fetch('/api/webhooks', {
+        const response = await authFetch('/api/webhooks', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1087,7 +1399,7 @@ async function createWebhook() {
 // Test webhook
 async function testWebhook(webhookId) {
     try {
-        const response = await fetch(`/api/webhook/${webhookId}/test`, {
+        const response = await authFetch(`/api/webhook/${webhookId}/test`, {
             method: 'POST'
         });
         
@@ -1160,7 +1472,7 @@ async function updateWebhook(webhookId) {
     }
     
     try {
-        const response = await fetch(`/api/webhook/${webhookId}`, {
+        const response = await authFetch(`/api/webhook/${webhookId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1191,7 +1503,7 @@ async function deleteWebhook(webhookId) {
     }
     
     try {
-        const response = await fetch(`/api/webhook/${webhookId}`, {
+        const response = await authFetch(`/api/webhook/${webhookId}`, {
             method: 'DELETE'
         });
         
