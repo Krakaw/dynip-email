@@ -74,7 +74,7 @@ Key configuration options:
 | `AUTH_ENABLED` | false | Enable user authentication for API access |
 | `JWT_SECRET` | - | Secret key for JWT tokens (required when auth enabled) |
 | `JWT_EXPIRY_HOURS` | 24 | JWT token expiry time in hours |
-| `AUTH_DOMAIN` | - | Restrict registration to emails from this domain |
+| `AUTH_DOMAIN` | - | Restrict registration to emails from these domains (comma-separated: "example.com,company.com") |
 | `RUST_LOG` | info | Log level (trace, debug, info, warn, error) |
 
 For detailed configuration options, see the [Configuration Guide](docs/CONFIGURATION.md).

@@ -23,7 +23,7 @@ pub struct Config {
     pub auth_enabled: bool,
     pub jwt_secret: String,
     pub jwt_expiry_hours: u64,
-    pub auth_domain: Option<String>,
+    pub auth_domains: Option<Vec<String>>,
 }
 
 /// SMTP SSL/TLS configuration for Let's Encrypt certificates
@@ -140,8 +140,17 @@ impl Config {
             .parse::<u64>()
             .unwrap_or(24);
 
-        // Optional domain restriction for user registration (e.g., "example.com")
-        let auth_domain = std::env::var("AUTH_DOMAIN").ok().filter(|s| !s.is_empty());
+        // Optional domain restriction for user registration (e.g., "example.com,company.com")
+        let auth_domains = std::env::var("AUTH_DOMAIN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|domains_str| {
+                domains_str
+                    .split(',')
+                    .map(|d| d.trim().to_string())
+                    .filter(|d| !d.is_empty())
+                    .collect()
+            });
 
         Ok(Config {
             smtp_port,
@@ -160,7 +169,7 @@ impl Config {
             auth_enabled,
             jwt_secret,
             jwt_expiry_hours,
-            auth_domain,
+            auth_domains,
         })
     }
 }
@@ -300,7 +309,16 @@ mod tests {
             .parse::<u64>()
             .unwrap_or(24);
 
-        let auth_domain = std::env::var("AUTH_DOMAIN").ok().filter(|s| !s.is_empty());
+        let auth_domains = std::env::var("AUTH_DOMAIN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|domains_str| {
+                domains_str
+                    .split(',')
+                    .map(|d| d.trim().to_string())
+                    .filter(|d| !d.is_empty())
+                    .collect()
+            });
 
         Ok(Config {
             smtp_port,
@@ -319,7 +337,7 @@ mod tests {
             auth_enabled,
             jwt_secret,
             jwt_expiry_hours,
-            auth_domain,
+            auth_domains,
         })
     }
 
