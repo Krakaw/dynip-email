@@ -320,3 +320,32 @@ impl Mailbox {
         }
     }
 }
+
+/// User model for authentication
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    /// Unique identifier for the user
+    pub id: String,
+
+    /// Username (unique)
+    pub username: String,
+
+    /// Bcrypt password hash
+    #[serde(skip_serializing)]
+    pub password_hash: String,
+
+    /// When the user was created
+    pub created_at: DateTime<Utc>,
+}
+
+impl User {
+    /// Create a new user with generated UUID
+    pub fn new(username: String, password_hash: String) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            username,
+            password_hash,
+            created_at: Utc::now(),
+        }
+    }
+}

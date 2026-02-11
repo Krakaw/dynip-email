@@ -20,6 +20,9 @@ pub struct Config {
     pub mcp_port: u16,
     pub imap_enabled: bool,
     pub imap_port: u16,
+    pub auth_enabled: bool,
+    pub jwt_secret: String,
+    pub jwt_expiry_hours: u64,
 }
 
 /// SMTP SSL/TLS configuration for Let's Encrypt certificates
@@ -115,6 +118,27 @@ impl Config {
             }
         };
 
+        // User authentication configuration
+        let auth_enabled = std::env::var("AUTH_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+
+        // JWT secret - generate a random one if not provided (for dev), but warn
+        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
+            if auth_enabled {
+                tracing::warn!(
+                    "JWT_SECRET not set but AUTH_ENABLED is true. Using random secret (sessions won't persist across restarts)"
+                );
+            }
+            uuid::Uuid::new_v4().to_string()
+        });
+
+        let jwt_expiry_hours = std::env::var("JWT_EXPIRY_HOURS")
+            .unwrap_or_else(|_| "24".to_string())
+            .parse::<u64>()
+            .unwrap_or(24);
+
         Ok(Config {
             smtp_port,
             smtp_starttls_port,
@@ -129,6 +153,9 @@ impl Config {
             mcp_port,
             imap_enabled,
             imap_port,
+            auth_enabled,
+            jwt_secret,
+            jwt_expiry_hours,
         })
     }
 }
@@ -256,6 +283,18 @@ mod tests {
             .parse()
             .unwrap_or(143);
 
+        let auth_enabled = std::env::var("AUTH_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+
+        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "test-secret".to_string());
+
+        let jwt_expiry_hours = std::env::var("JWT_EXPIRY_HOURS")
+            .unwrap_or_else(|_| "24".to_string())
+            .parse::<u64>()
+            .unwrap_or(24);
+
         Ok(Config {
             smtp_port,
             smtp_starttls_port,
@@ -270,6 +309,9 @@ mod tests {
             mcp_port,
             imap_enabled,
             imap_port,
+            auth_enabled,
+            jwt_secret,
+            jwt_expiry_hours,
         })
     }
 
@@ -290,6 +332,9 @@ mod tests {
         env::remove_var("MCP_PORT");
         env::remove_var("IMAP_ENABLED");
         env::remove_var("IMAP_PORT");
+        env::remove_var("AUTH_ENABLED");
+        env::remove_var("JWT_SECRET");
+        env::remove_var("JWT_EXPIRY_HOURS");
     }
 
     #[test]
@@ -310,6 +355,8 @@ mod tests {
         assert_eq!(config.mcp_port, 3001);
         assert_eq!(config.imap_enabled, false);
         assert_eq!(config.imap_port, 143);
+        assert_eq!(config.auth_enabled, false);
+        assert_eq!(config.jwt_expiry_hours, 24);
 
         // Clean up after test
         clear_all_env_vars();

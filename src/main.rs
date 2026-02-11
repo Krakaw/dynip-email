@@ -1,4 +1,5 @@
 mod api;
+mod auth;
 mod config;
 mod imap;
 mod mcp;
@@ -180,6 +181,19 @@ async fn run() -> Result<()> {
     // Create webhook trigger
     let webhook_trigger = webhooks::WebhookTrigger::new(storage.clone());
 
+    // Create auth configuration
+    let auth_config = auth::AuthConfig {
+        enabled: config.auth_enabled,
+        jwt_secret: config.jwt_secret.clone(),
+        jwt_expiry_hours: config.jwt_expiry_hours,
+    };
+
+    if config.auth_enabled {
+        info!("🔐 Authentication enabled - API routes require login");
+    } else {
+        info!("🔓 Authentication disabled - API routes are public");
+    }
+
     // Create API router
     let router = api::create_router(
         storage.clone(),
@@ -187,6 +201,7 @@ async fn run() -> Result<()> {
         deletion_tx,
         config.domain_name.clone(),
         webhook_trigger,
+        auth_config,
     );
 
     // Start MCP server if enabled
@@ -349,6 +364,9 @@ mod tests {
             mcp_port: 3001,
             imap_enabled: false,
             imap_port: 143,
+            auth_enabled: false,
+            jwt_secret: "test-secret".to_string(),
+            jwt_expiry_hours: 24,
         })
     }
 

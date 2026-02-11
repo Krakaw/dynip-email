@@ -6,7 +6,7 @@ use std::str::FromStr;
 use tracing::{error, info, warn};
 
 use super::{
-    models::{Email, Mailbox, Webhook, WebhookEvent},
+    models::{Email, Mailbox, User, Webhook, WebhookEvent},
     StorageBackend,
 };
 
@@ -98,6 +98,29 @@ impl SqliteBackend {
                 created_at TEXT NOT NULL,
                 is_locked BOOLEAN DEFAULT 0
             )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create users table for authentication
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create index on username for faster user lookups
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)
             "#,
         )
         .execute(&pool)
@@ -588,6 +611,88 @@ impl StorageBackend for SqliteBackend {
                 Ok(true)
             }
         }
+    }
+
+    async fn create_user(&self, user: User) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, password_hash, created_at)
+            VALUES (?, ?, ?, ?)
+            "#,
+        )
+        .bind(&user.id)
+        .bind(&user.username)
+        .bind(&user.password_hash)
+        .bind(user.created_at.to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+
+        info!("Created user {}", user.username);
+        Ok(())
+    }
+
+    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
+        let row = sqlx::query_as::<_, (String, String, String, String)>(
+            r#"
+            SELECT id, username, password_hash, created_at
+            FROM users
+            WHERE username = ?
+            "#,
+        )
+        .bind(username)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(id, username, password_hash, created_at)| {
+            let created_at = DateTime::parse_from_rfc3339(&created_at)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc);
+
+            User {
+                id,
+                username,
+                password_hash,
+                created_at,
+            }
+        }))
+    }
+
+    async fn get_user_by_id(&self, id: &str) -> Result<Option<User>> {
+        let row = sqlx::query_as::<_, (String, String, String, String)>(
+            r#"
+            SELECT id, username, password_hash, created_at
+            FROM users
+            WHERE id = ?
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(id, username, password_hash, created_at)| {
+            let created_at = DateTime::parse_from_rfc3339(&created_at)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc);
+
+            User {
+                id,
+                username,
+                password_hash,
+                created_at,
+            }
+        }))
+    }
+
+    async fn has_users(&self) -> Result<bool> {
+        let row = sqlx::query_as::<_, (i64,)>(
+            r#"
+            SELECT COUNT(*) FROM users
+            "#,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.0 > 0)
     }
 }
 
