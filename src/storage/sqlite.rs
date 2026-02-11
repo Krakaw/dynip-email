@@ -577,13 +577,15 @@ impl StorageBackend for SqliteBackend {
                         }
                     }
                 } else {
-                    // No password set - reject login
-                    Ok(false)
+                    // No password set - allow any password (unclaimed mailbox)
+                    info!("IMAP login allowed for unclaimed mailbox: {}", address);
+                    Ok(true)
                 }
             }
             None => {
-                // Mailbox doesn't exist - reject login
-                Ok(false)
+                // Mailbox doesn't exist - allow any password (like web UI)
+                info!("IMAP login allowed for non-existent mailbox: {}", address);
+                Ok(true)
             }
         }
     }
