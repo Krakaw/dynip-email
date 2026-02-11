@@ -636,6 +636,8 @@ async function loadInbox() {
 // Update claim/release button in status bar
 function updateClaimStatus(isClaimed) {
     const lockBtn = document.getElementById('lockMailbox');
+    if (!lockBtn) return; // Element might not exist in some contexts
+    
     if (!currentAddress) {
         lockBtn.style.display = 'none';
         return;
@@ -651,15 +653,18 @@ function updateClaimStatus(isClaimed) {
 }
 
 // Claim/release button click handler
-document.getElementById('lockMailbox').addEventListener('click', async () => {
-    if (!currentAddress) return;
-    const isLocked = await checkMailboxStatus(currentAddress);
-    if (isLocked) {
-        await releaseMailbox(currentAddress);
-    } else {
-        showClaimModal(currentAddress);
-    }
-});
+const lockMailboxBtn = document.getElementById('lockMailbox');
+if (lockMailboxBtn) {
+    lockMailboxBtn.addEventListener('click', async () => {
+        if (!currentAddress) return;
+        const isLocked = await checkMailboxStatus(currentAddress);
+        if (isLocked) {
+            await releaseMailbox(currentAddress);
+        } else {
+            showClaimModal(currentAddress);
+        }
+    });
+}
 
 // Release mailbox (remove password protection)
 async function releaseMailbox(address) {
