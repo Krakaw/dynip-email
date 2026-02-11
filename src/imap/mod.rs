@@ -194,9 +194,7 @@ impl ImapConnection {
         // Read the base64-encoded credentials
         let mut line = String::new();
         match self.stream.read_line(&mut line).await {
-            Ok(0) => {
-                return Err(anyhow::anyhow!("Client disconnected during authentication"));
-            }
+            Ok(0) => Err(anyhow::anyhow!("Client disconnected during authentication")),
             Ok(_) => {
                 let line = line.trim();
                 debug!("IMAP AUTHENTICATE received credentials");
