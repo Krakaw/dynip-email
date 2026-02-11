@@ -234,20 +234,17 @@ impl ImapConnection {
 
                 debug!("IMAP AUTHENTICATE PLAIN for user: {}", username);
 
-                // Extract just the local part for storage, but build full address for verification
+                // Extract just the local part - mailboxes are keyed by username only
                 let mailbox_name = if username.contains('@') {
                     username.split('@').next().unwrap_or(&username).to_string()
                 } else {
                     username.clone()
                 };
 
-                // Build full email address for verification (mailboxes are stored with domain)
-                let full_address = format!("{}@{}", mailbox_name, self.domain_name);
-
-                // Verify credentials against storage
+                // Verify credentials against storage (mailboxes keyed by username only)
                 match self
                     .storage
-                    .verify_mailbox_password(&full_address, &password)
+                    .verify_mailbox_password(&mailbox_name, &password)
                     .await
                 {
                     Ok(true) => {
@@ -291,21 +288,17 @@ impl ImapConnection {
 
         debug!("IMAP LOGIN attempt for user: {}", username);
 
-        // The username should be the mailbox address (e.g., "user" or "user@domain.com")
-        // Extract just the local part for storage, but build full address for verification
+        // Extract just the local part - mailboxes are keyed by username only
         let mailbox_name = if username.contains('@') {
             username.split('@').next().unwrap_or(&username).to_string()
         } else {
             username.clone()
         };
 
-        // Build full email address for verification (mailboxes are stored with domain)
-        let full_address = format!("{}@{}", mailbox_name, self.domain_name);
-
-        // Verify credentials against storage
+        // Verify credentials against storage (mailboxes keyed by username only)
         match self
             .storage
-            .verify_mailbox_password(&full_address, &password)
+            .verify_mailbox_password(&mailbox_name, &password)
             .await
         {
             Ok(true) => {
