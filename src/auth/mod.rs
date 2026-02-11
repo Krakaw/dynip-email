@@ -39,8 +39,8 @@ pub struct AuthConfig {
     pub enabled: bool,
     pub jwt_secret: String,
     pub jwt_expiry_hours: u64,
-    /// Optional domain restriction for registration (e.g., "example.com")
-    pub auth_domain: Option<String>,
+    /// Optional domain restrictions for registration (e.g., vec!["example.com", "company.com"])
+    pub auth_domains: Option<Vec<String>>,
 }
 
 /// Request body for registration
@@ -107,11 +107,13 @@ fn is_valid_email(email: &str) -> bool {
     true
 }
 
-/// Validate email domain against allowed domain
-fn is_allowed_domain(email: &str, allowed_domain: &str) -> bool {
+/// Validate email domain against allowed domains
+fn is_allowed_domain(email: &str, allowed_domains: &[String]) -> bool {
     if let Some(at_pos) = email.rfind('@') {
         let email_domain = &email[at_pos + 1..];
-        email_domain.eq_ignore_ascii_case(allowed_domain)
+        allowed_domains
+            .iter()
+            .any(|domain| email_domain.eq_ignore_ascii_case(domain))
     } else {
         false
     }
@@ -152,13 +154,18 @@ pub async fn register(
     }
 
     // Validate email domain if restriction is set
-    if let Some(ref allowed_domain) = config.auth_domain {
-        if !is_allowed_domain(&request.email, allowed_domain) {
+    if let Some(ref allowed_domains) = config.auth_domains {
+        if !is_allowed_domain(&request.email, allowed_domains) {
+            let domain_list = if allowed_domains.len() == 1 {
+                format!("@{}", allowed_domains[0])
+            } else {
+                format!("@{}", allowed_domains.join(", @"))
+            };
             return Err((
                 StatusCode::BAD_REQUEST,
                 format!(
-                    "Registration is only allowed for @{} email addresses",
-                    allowed_domain
+                    "Registration is only allowed for {} email addresses",
+                    domain_list
                 ),
             ));
         }
@@ -304,7 +311,7 @@ pub async fn status(
         "auth_enabled": config.enabled,
         "has_users": has_users,
         "registration_open": config.enabled && !has_users,
-        "auth_domain": config.auth_domain
+        "auth_domains": config.auth_domains
     })))
 }
 
@@ -432,7 +439,7 @@ mod tests {
             enabled: true,
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiry_hours: 24,
-            auth_domain: None,
+            auth_domains: None,
         };
 
         let user = User::new("test@example.com".to_string(), "hash".to_string());
@@ -449,7 +456,7 @@ mod tests {
             enabled: true,
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiry_hours: 24,
-            auth_domain: None,
+            auth_domains: None,
         };
 
         let result = verify_token("invalid-token", &config);
@@ -462,14 +469,14 @@ mod tests {
             enabled: true,
             jwt_secret: "secret1".to_string(),
             jwt_expiry_hours: 24,
-            auth_domain: None,
+            auth_domains: None,
         };
 
         let config2 = AuthConfig {
             enabled: true,
             jwt_secret: "secret2".to_string(),
             jwt_expiry_hours: 24,
-            auth_domain: None,
+            auth_domains: None,
         };
 
         let user = User::new("test@example.com".to_string(), "hash".to_string());
@@ -497,12 +504,15 @@ mod tests {
 
     #[test]
     fn test_allowed_domain() {
-        assert!(is_allowed_domain("user@example.com", "example.com"));
-        assert!(is_allowed_domain("user@EXAMPLE.COM", "example.com"));
-        assert!(!is_allowed_domain("user@other.com", "example.com"));
+        let domains = vec!["example.com".to_string(), "company.com".to_string()];
+        assert!(is_allowed_domain("user@example.com", &domains));
+        assert!(is_allowed_domain("user@EXAMPLE.COM", &domains));
+        assert!(is_allowed_domain("user@company.com", &domains));
+        assert!(is_allowed_domain("user@COMPANY.COM", &domains));
+        assert!(!is_allowed_domain("user@other.com", &domains));
         assert!(!is_allowed_domain(
             "user@example.com.evil.com",
-            "example.com"
+            &domains
         ));
     }
 
@@ -522,7 +532,7 @@ mod tests {
             enabled: true,
             jwt_secret: "test-secret-key-for-testing".to_string(),
             jwt_expiry_hours: 24,
-            auth_domain: None,
+            auth_domains: None,
         }
     }
 
@@ -664,7 +674,7 @@ mod tests {
     async fn test_register_domain_restriction_allowed() {
         let storage = test_storage().await;
         let config = AuthConfig {
-            auth_domain: Some("allowed.com".to_string()),
+            auth_domains: Some(vec!["allowed.com".to_string()]),
             ..test_auth_config()
         };
         let app = auth_app(storage, config);
@@ -677,7 +687,39 @@ mod tests {
     async fn test_register_domain_restriction_blocked() {
         let storage = test_storage().await;
         let config = AuthConfig {
-            auth_domain: Some("allowed.com".to_string()),
+            auth_domains: Some(vec!["allowed.com".to_string()]),
+            ..test_auth_config()
+        };
+        let app = auth_app(storage, config);
+
+        let response = register_user(&app, "user@blocked.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_register_multiple_domains_allowed() {
+        let storage = test_storage().await;
+        let config = AuthConfig {
+            auth_domains: Some(vec!["allowed.com".to_string(), "company.com".to_string()]),
+            ..test_auth_config()
+        };
+        let app = auth_app(storage.clone(), config.clone());
+
+        // Test first domain
+        let response = register_user(&app, "user1@allowed.com", "password123").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Test second domain
+        let app2 = auth_app(storage, config);
+        let response = register_user(&app2, "user2@company.com", "password456").await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_register_multiple_domains_blocked() {
+        let storage = test_storage().await;
+        let config = AuthConfig {
+            auth_domains: Some(vec!["allowed.com".to_string(), "company.com".to_string()]),
             ..test_auth_config()
         };
         let app = auth_app(storage, config);
@@ -1044,10 +1086,10 @@ mod tests {
     // Status with domain restriction test
 
     #[tokio::test]
-    async fn test_status_shows_auth_domain() {
+    async fn test_status_shows_auth_domains() {
         let storage = test_storage().await;
         let config = AuthConfig {
-            auth_domain: Some("corp.com".to_string()),
+            auth_domains: Some(vec!["corp.com".to_string(), "company.com".to_string()]),
             ..test_auth_config()
         };
         let app = auth_app(storage, config);
@@ -1064,6 +1106,8 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         let json = body_json(response).await;
-        assert_eq!(json["auth_domain"], "corp.com");
+        assert!(json["auth_domains"].is_array());
+        assert_eq!(json["auth_domains"][0], "corp.com");
+        assert_eq!(json["auth_domains"][1], "company.com");
     }
 }
