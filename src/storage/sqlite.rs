@@ -972,8 +972,7 @@ impl StorageBackend for SqliteBackend {
         
         // Build the search query
         let sql = if search.mailbox.is_some() {
-            format!(
-                r#"
+            r#"
                 SELECT 
                     e.id,
                     e.to_address,
@@ -988,11 +987,9 @@ impl StorageBackend for SqliteBackend {
                 AND e.to_address = ?
                 ORDER BY rank
                 LIMIT ?
-                "#
-            )
+                "#.to_string()
         } else {
-            format!(
-                r#"
+            r#"
                 SELECT 
                     e.id,
                     e.to_address,
@@ -1006,8 +1003,7 @@ impl StorageBackend for SqliteBackend {
                 WHERE emails_fts MATCH ?
                 ORDER BY rank
                 LIMIT ?
-                "#
-            )
+                "#.to_string()
         };
 
         let rows = if let Some(mailbox) = &search.mailbox {
