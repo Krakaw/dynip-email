@@ -23,7 +23,7 @@ use admin::{delete_rate_limit, get_rate_limit, get_rate_limit_stats, set_rate_li
 use handlers::{
     check_mailbox_status, claim_mailbox, create_webhook, delete_email, delete_webhook,
     get_email_by_id, get_emails_for_address, get_webhook_by_id, get_webhooks_for_mailbox,
-    release_mailbox, test_webhook, update_webhook, AppConfig,
+    release_mailbox, search_emails, test_webhook, update_webhook, AppConfig,
 };
 use websocket::{websocket_handler, WsState};
 
@@ -44,9 +44,6 @@ pub fn create_router(
 
     let app_config = AppConfig { domain_name };
 
-    // Create combined state for routes that need both storage and config
-    let combined_state = (storage.clone(), app_config.clone());
-
     // Create state for delete email route (storage + webhook_trigger)
     let delete_email_state = (storage.clone(), webhook_trigger);
 
@@ -64,7 +61,10 @@ pub fn create_router(
         .with_state((storage.clone(), app_config.clone()))
         // API routes with combined state (storage + config)
         .route("/api/emails/:address", get(get_emails_for_address))
-        .with_state(combined_state)
+        .with_state((storage.clone(), app_config.clone()))
+        // Search emails (needs storage + config for mailbox normalization)
+        .route("/api/search", get(search_emails))
+        .with_state((storage.clone(), app_config.clone()))
         // Email by ID doesn't need domain normalization
         .route("/api/email/:id", get(get_email_by_id))
         .with_state(storage.clone())

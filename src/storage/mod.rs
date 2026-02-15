@@ -1,9 +1,11 @@
+pub mod fts;
 pub mod models;
 pub mod sqlite;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use fts::{SearchQuery, SearchResult};
 use models::{Email, Mailbox, User, Webhook, WebhookEvent};
 
 use crate::rate_limit::{RateLimit, RateLimitRequest};
@@ -107,4 +109,7 @@ pub trait StorageBackend: Send + Sync {
 
     /// Clean up old rate limit requests (optional, for maintenance)
     async fn cleanup_old_rate_limit_requests(&self, before: DateTime<Utc>) -> Result<u64>;
+
+    /// Search emails using FTS5 full-text search
+    async fn search_emails(&self, query: SearchQuery) -> Result<Vec<SearchResult>>;
 }

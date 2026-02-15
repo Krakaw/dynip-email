@@ -32,7 +32,12 @@ const emailCount = document.getElementById('emailCount');
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon = document.getElementById('themeIcon');
 const inboxTab = document.getElementById('inboxTab');
+const searchTab = document.getElementById('searchTab');
 const webhooksTab = document.getElementById('webhooksTab');
+const searchBox = document.getElementById('searchBox');
+const searchQuery = document.getElementById('searchQuery');
+const searchBtn = document.getElementById('searchBtn');
+const searchResults = document.getElementById('searchResults');
 
 // Event listeners
 loadEmailsBtn.addEventListener('click', loadInbox);
@@ -41,7 +46,12 @@ emailAddressInput.addEventListener('keypress', (e) => {
 });
 themeToggle.addEventListener('click', toggleTheme);
 inboxTab.addEventListener('click', () => switchTab('emails'));
+searchTab.addEventListener('click', () => switchTab('search'));
 webhooksTab.addEventListener('click', () => switchTab('webhooks'));
+searchBtn.addEventListener('click', performSearch);
+searchQuery.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') performSearch();
+});
 
 // Page visibility and focus event listeners
 document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -1288,16 +1298,99 @@ async function deleteEmail(emailId) {
 function switchTab(tab) {
     currentTab = tab;
     
+    // Remove active class from all tabs
+    inboxTab.classList.remove('active');
+    searchTab.classList.remove('active');
+    webhooksTab.classList.remove('active');
+    
+    // Hide all panels
+    emailList.style.display = 'none';
+    searchBox.style.display = 'none';
+    searchResults.style.display = 'none';
+    webhookList.style.display = 'none';
+    
     if (tab === 'emails') {
         inboxTab.classList.add('active');
-        webhooksTab.classList.remove('active');
         emailList.style.display = 'block';
-        webhookList.style.display = 'none';
+    } else if (tab === 'search') {
+        searchTab.classList.add('active');
+        searchBox.style.display = 'block';
+        searchResults.style.display = 'block';
     } else if (tab === 'webhooks') {
         webhooksTab.classList.add('active');
-        inboxTab.classList.remove('active');
-        emailList.style.display = 'none';
         webhookList.style.display = 'block';
+        
+        // Load webhooks if we have a current address
+        if (currentAddress) {
+            loadWebhooks(currentAddress);
+        }
+    }
+}
+
+// Search emails
+async function performSearch() {
+    const query = searchQuery.value.trim();
+    if (!query) {
+        return;
+    }
+    
+    try {
+        // Build search URL with optional mailbox filter
+        let url = `/api/search?q=${encodeURIComponent(query)}`;
+        if (currentAddress) {
+            url += `&mailbox=${encodeURIComponent(currentAddress)}`;
+            if (mailboxPassword) {
+                url += `&password=${encodeURIComponent(mailboxPassword)}`;
+            }
+        }
+        
+        const response = await authFetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        displaySearchResults(data.results);
+    } catch (error) {
+        console.error('Search failed:', error);
+        searchResults.innerHTML = '<div class="empty-state"><p>⚠️ Search failed. Please try again.</p></div>';
+    }
+}
+
+// Display search results
+function displaySearchResults(results) {
+    if (results.length === 0) {
+        searchResults.innerHTML = '<div class="empty-state"><p>🔍 No results found</p></div>';
+        return;
+    }
+    
+    searchResults.innerHTML = results.map(result => `
+        <div class="email-item" onclick="loadEmailById('${result.id}')">
+            <div class="email-header">
+                <span class="from">${escapeHtml(result.from)}</span>
+                <span class="time">${formatTime(result.timestamp)}</span>
+            </div>
+            <div class="subject">${escapeHtml(result.subject)}</div>
+            <div class="snippet">${result.snippet}</div>
+            <div class="to-address">to: ${escapeHtml(result.to)}</div>
+        </div>
+    `).join('');
+}
+
+// Load email by ID (for search results)
+async function loadEmailById(emailId) {
+    try {
+        const response = await authFetch(`/api/email/${emailId}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const email = await response.json();
+        selectedEmailId = emailId;
+        displayEmailDetail(email);
+    } catch (error) {
+        console.error('Failed to load email:', error);
+        emailDetail.innerHTML = '<div class="empty-state"><p>⚠️ Failed to load email</p></div>';
     }
 }
 

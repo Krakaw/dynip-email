@@ -49,12 +49,27 @@
                     <h2>Inbox</h2>
                     <div class="tab-buttons">
                         <button id="inboxTab" class="tab-button active">Emails</button>
+                        <button id="searchTab" class="tab-button">Search</button>
                         <button id="webhooksTab" class="tab-button">Webhooks</button>
                     </div>
+                </div>
+                <div id="searchBox" class="search-box" style="display: none;">
+                    <input 
+                        type="text" 
+                        id="searchQuery" 
+                        placeholder="Search emails..."
+                        autocomplete="off"
+                    >
+                    <button id="searchBtn" class="btn-primary">Search</button>
                 </div>
                 <div id="emailList" class="email-list">
                     <div class="empty-state">
                         <p>👋 Enter an email address to view messages</p>
+                    </div>
+                </div>
+                <div id="searchResults" class="email-list" style="display: none;">
+                    <div class="empty-state">
+                        <p>🔍 Enter a search query to find emails</p>
                     </div>
                 </div>
                 <div id="webhookList" class="webhook-list" style="display: none;">
