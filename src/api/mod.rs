@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod handlers;
 pub mod websocket;
 
@@ -15,8 +16,10 @@ use tower_http::{
 use tracing::info;
 
 use crate::auth::{self, AuthConfig};
+use crate::rate_limit;
 use crate::storage::{models::Email, StorageBackend};
 use crate::webhooks::WebhookTrigger;
+use admin::{delete_rate_limit, get_rate_limit, get_rate_limit_stats, set_rate_limit};
 use handlers::{
     check_mailbox_status, claim_mailbox, create_webhook, delete_email, delete_webhook,
     get_email_by_id, get_emails_for_address, get_webhook_by_id, get_webhooks_for_mailbox,
@@ -81,6 +84,23 @@ pub fn create_router(
         .with_state(storage.clone())
         .route("/api/webhook/:id/test", post(test_webhook))
         .with_state(storage.clone())
+        // Admin routes for rate limiting
+        .route("/api/admin/rate-limit/:address", get(get_rate_limit))
+        .with_state(storage.clone())
+        .route("/api/admin/rate-limit/:address", post(set_rate_limit))
+        .with_state(storage.clone())
+        .route("/api/admin/rate-limit/:address", delete(delete_rate_limit))
+        .with_state(storage.clone())
+        .route(
+            "/api/admin/rate-limit/:address/stats",
+            get(get_rate_limit_stats),
+        )
+        .with_state(storage.clone())
+        // Apply rate limiting middleware first
+        .layer(middleware::from_fn_with_state(
+            storage.clone(),
+            rate_limit::rate_limit_middleware,
+        ))
         // Apply auth middleware to protected routes
         .layer(middleware::from_fn_with_state(
             auth_config.clone(),

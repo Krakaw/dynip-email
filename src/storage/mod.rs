@@ -3,7 +3,10 @@ pub mod sqlite;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use models::{Email, Mailbox, User, Webhook, WebhookEvent};
+
+use crate::rate_limit::{RateLimit, RateLimitRequest};
 
 /// Trait defining the storage backend interface
 /// This allows swapping storage implementations (SQLite, PostgreSQL, Redis, etc.)
@@ -74,4 +77,34 @@ pub trait StorageBackend: Send + Sync {
 
     /// Check if any users exist (for determining if registration should be open)
     async fn has_users(&self) -> Result<bool>;
+
+    // Rate limiting methods
+
+    /// Create a new rate limit
+    async fn create_rate_limit(&self, rate_limit: RateLimit) -> Result<()>;
+
+    /// Get a rate limit by mailbox address
+    async fn get_rate_limit(&self, address: &str) -> Result<Option<RateLimit>>;
+
+    /// Update an existing rate limit
+    async fn update_rate_limit(&self, rate_limit: RateLimit) -> Result<()>;
+
+    /// Delete a rate limit
+    async fn delete_rate_limit(&self, address: &str) -> Result<()>;
+
+    /// Record a rate limit request
+    async fn record_rate_limit_request(&self, request: RateLimitRequest) -> Result<()>;
+
+    /// Count requests since a given timestamp for a mailbox
+    async fn count_requests_since(&self, address: &str, since: DateTime<Utc>) -> Result<u32>;
+
+    /// Get the oldest request timestamp since a given time (for calculating retry-after)
+    async fn get_oldest_request_since(
+        &self,
+        address: &str,
+        since: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>>;
+
+    /// Clean up old rate limit requests (optional, for maintenance)
+    async fn cleanup_old_rate_limit_requests(&self, before: DateTime<Utc>) -> Result<u64>;
 }

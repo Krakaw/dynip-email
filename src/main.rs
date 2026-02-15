@@ -3,6 +3,7 @@ mod auth;
 mod config;
 mod imap;
 mod mcp;
+mod rate_limit;
 mod smtp;
 mod storage;
 mod webhooks;

@@ -126,6 +126,61 @@ impl SqliteBackend {
         .execute(&pool)
         .await?;
 
+        // Create rate_limits table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS rate_limits (
+                mailbox_address TEXT PRIMARY KEY,
+                requests_per_hour INTEGER NOT NULL,
+                requests_per_day INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create rate_limit_requests table for tracking individual requests
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS rate_limit_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mailbox_address TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create index on mailbox_address for faster rate limit queries
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_rate_limit_requests_mailbox ON rate_limit_requests(mailbox_address)
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create index on timestamp for efficient cleanup
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_rate_limit_requests_timestamp ON rate_limit_requests(timestamp)
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create compound index for rate limit lookups
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_rate_limit_requests_mailbox_timestamp ON rate_limit_requests(mailbox_address, timestamp)
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
         info!("SQLite database initialized successfully");
 
         Ok(Self { pool })
@@ -693,6 +748,169 @@ impl StorageBackend for SqliteBackend {
         .await?;
 
         Ok(row.0 > 0)
+    }
+
+    // Rate limiting implementation
+
+    async fn create_rate_limit(&self, rate_limit: crate::rate_limit::RateLimit) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO rate_limits (mailbox_address, requests_per_hour, requests_per_day, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&rate_limit.mailbox_address)
+        .bind(rate_limit.requests_per_hour)
+        .bind(rate_limit.requests_per_day)
+        .bind(rate_limit.created_at.to_rfc3339())
+        .bind(rate_limit.updated_at.to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+
+        info!(
+            "Created rate limit for mailbox {}",
+            rate_limit.mailbox_address
+        );
+        Ok(())
+    }
+
+    async fn get_rate_limit(&self, address: &str) -> Result<Option<crate::rate_limit::RateLimit>> {
+        let row = sqlx::query_as::<_, (String, u32, u32, String, String)>(
+            r#"
+            SELECT mailbox_address, requests_per_hour, requests_per_day, created_at, updated_at
+            FROM rate_limits
+            WHERE mailbox_address = ?
+            "#,
+        )
+        .bind(address)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(
+            |(mailbox_address, requests_per_hour, requests_per_day, created_at, updated_at)| {
+                let created_at = DateTime::parse_from_rfc3339(&created_at)
+                    .unwrap_or_else(|_| Utc::now().into())
+                    .with_timezone(&Utc);
+                let updated_at = DateTime::parse_from_rfc3339(&updated_at)
+                    .unwrap_or_else(|_| Utc::now().into())
+                    .with_timezone(&Utc);
+
+                crate::rate_limit::RateLimit {
+                    mailbox_address,
+                    requests_per_hour,
+                    requests_per_day,
+                    created_at,
+                    updated_at,
+                }
+            },
+        ))
+    }
+
+    async fn update_rate_limit(&self, rate_limit: crate::rate_limit::RateLimit) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE rate_limits
+            SET requests_per_hour = ?, requests_per_day = ?, updated_at = ?
+            WHERE mailbox_address = ?
+            "#,
+        )
+        .bind(rate_limit.requests_per_hour)
+        .bind(rate_limit.requests_per_day)
+        .bind(Utc::now().to_rfc3339())
+        .bind(&rate_limit.mailbox_address)
+        .execute(&self.pool)
+        .await?;
+
+        info!(
+            "Updated rate limit for mailbox {}",
+            rate_limit.mailbox_address
+        );
+        Ok(())
+    }
+
+    async fn delete_rate_limit(&self, address: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            DELETE FROM rate_limits WHERE mailbox_address = ?
+            "#,
+        )
+        .bind(address)
+        .execute(&self.pool)
+        .await?;
+
+        info!("Deleted rate limit for mailbox {}", address);
+        Ok(())
+    }
+
+    async fn record_rate_limit_request(
+        &self,
+        request: crate::rate_limit::RateLimitRequest,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO rate_limit_requests (mailbox_address, timestamp)
+            VALUES (?, ?)
+            "#,
+        )
+        .bind(&request.mailbox_address)
+        .bind(request.timestamp.to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn count_requests_since(&self, address: &str, since: DateTime<Utc>) -> Result<u32> {
+        let row = sqlx::query_as::<_, (i64,)>(
+            r#"
+            SELECT COUNT(*) FROM rate_limit_requests
+            WHERE mailbox_address = ? AND timestamp >= ?
+            "#,
+        )
+        .bind(address)
+        .bind(since.to_rfc3339())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.0 as u32)
+    }
+
+    async fn get_oldest_request_since(
+        &self,
+        address: &str,
+        since: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>> {
+        let row = sqlx::query_as::<_, (String,)>(
+            r#"
+            SELECT timestamp FROM rate_limit_requests
+            WHERE mailbox_address = ? AND timestamp >= ?
+            ORDER BY timestamp ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(address)
+        .bind(since.to_rfc3339())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(timestamp,)| {
+            DateTime::parse_from_rfc3339(&timestamp)
+                .unwrap_or_else(|_| Utc::now().into())
+                .with_timezone(&Utc)
+        }))
+    }
+
+    async fn cleanup_old_rate_limit_requests(&self, before: DateTime<Utc>) -> Result<u64> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM rate_limit_requests WHERE timestamp < ?
+            "#,
+        )
+        .bind(before.to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
     }
 }
 
