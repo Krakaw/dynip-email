@@ -7,6 +7,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::storage::{
+    fts::SearchQuery,
     models::{Webhook, WebhookEvent},
     StorageBackend,
 };
@@ -144,6 +145,52 @@ pub async fn get_email_by_id(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to fetch email: {}", e),
+        )),
+    }
+}
+
+/// Search parameters
+#[derive(Debug, Deserialize)]
+pub struct SearchParams {
+    /// Search query string
+    q: String,
+    /// Optional mailbox filter
+    mailbox: Option<String>,
+    /// Optional result limit
+    limit: Option<i64>,
+    /// Optional password for protected mailboxes
+    password: Option<String>,
+}
+
+/// Search emails using FTS5 full-text search
+pub async fn search_emails(
+    Query(params): Query<SearchParams>,
+    State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    // If mailbox filter is specified, verify password if needed
+    if let Some(ref mailbox_input) = params.mailbox {
+        let local_part = config.extract_local_part(mailbox_input);
+        verify_mailbox_password(&storage, &local_part, params.password.as_deref()).await?;
+    }
+
+    // Normalize mailbox address if provided
+    let normalized_mailbox = params.mailbox.map(|m| config.normalize_address(&m));
+
+    // Build search query
+    let mut search = SearchQuery::new(params.q);
+    if let Some(limit) = params.limit {
+        search = search.with_limit(limit);
+    }
+    if let Some(mailbox) = normalized_mailbox {
+        search = search.with_mailbox(mailbox);
+    }
+
+    // Execute search
+    match storage.search_emails(search).await {
+        Ok(results) => Ok(Json(json!({ "results": results }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Search failed: {}", e),
         )),
     }
 }

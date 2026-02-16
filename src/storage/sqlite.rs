@@ -6,6 +6,7 @@ use std::str::FromStr;
 use tracing::{error, info, warn};
 
 use super::{
+    fts::{SearchQuery, SearchResult},
     models::{Email, Mailbox, User, Webhook, WebhookEvent},
     StorageBackend,
 };
@@ -176,6 +177,59 @@ impl SqliteBackend {
         sqlx::query(
             r#"
             CREATE INDEX IF NOT EXISTS idx_rate_limit_requests_mailbox_timestamp ON rate_limit_requests(mailbox_address, timestamp)
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create FTS5 virtual table for full-text search
+        sqlx::query(
+            r#"
+            CREATE VIRTUAL TABLE IF NOT EXISTS emails_fts USING fts5(
+                id UNINDEXED,
+                to_address,
+                from_address,
+                subject,
+                body,
+                content='emails',
+                content_rowid='rowid'
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create triggers to keep FTS table in sync with emails table
+        sqlx::query(
+            r#"
+            CREATE TRIGGER IF NOT EXISTS emails_ai AFTER INSERT ON emails BEGIN
+                INSERT INTO emails_fts(rowid, id, to_address, from_address, subject, body)
+                VALUES (new.rowid, new.id, new.to_address, new.from_address, new.subject, new.body);
+            END
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE TRIGGER IF NOT EXISTS emails_ad AFTER DELETE ON emails BEGIN
+                INSERT INTO emails_fts(emails_fts, rowid, id, to_address, from_address, subject, body)
+                VALUES('delete', old.rowid, old.id, old.to_address, old.from_address, old.subject, old.body);
+            END
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE TRIGGER IF NOT EXISTS emails_au AFTER UPDATE ON emails BEGIN
+                INSERT INTO emails_fts(emails_fts, rowid, id, to_address, from_address, subject, body)
+                VALUES('delete', old.rowid, old.id, old.to_address, old.from_address, old.subject, old.body);
+                INSERT INTO emails_fts(rowid, id, to_address, from_address, subject, body)
+                VALUES (new.rowid, new.id, new.to_address, new.from_address, new.subject, new.body);
+            END
             "#,
         )
         .execute(&pool)
@@ -911,6 +965,86 @@ impl StorageBackend for SqliteBackend {
         .await?;
 
         Ok(result.rows_affected())
+    }
+
+    async fn search_emails(&self, search: SearchQuery) -> Result<Vec<SearchResult>> {
+        let limit = search.limit.unwrap_or(50);
+
+        // Build the search query
+        let sql = if search.mailbox.is_some() {
+            r#"
+                SELECT 
+                    e.id,
+                    e.to_address,
+                    e.from_address,
+                    e.subject,
+                    e.timestamp,
+                    snippet(emails_fts, 3, '<mark>', '</mark>', '...', 64) as snippet,
+                    rank
+                FROM emails_fts
+                JOIN emails e ON emails_fts.rowid = e.rowid
+                WHERE emails_fts MATCH ?
+                AND e.to_address = ?
+                ORDER BY rank
+                LIMIT ?
+                "#
+            .to_string()
+        } else {
+            r#"
+                SELECT 
+                    e.id,
+                    e.to_address,
+                    e.from_address,
+                    e.subject,
+                    e.timestamp,
+                    snippet(emails_fts, 3, '<mark>', '</mark>', '...', 64) as snippet,
+                    rank
+                FROM emails_fts
+                JOIN emails e ON emails_fts.rowid = e.rowid
+                WHERE emails_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+                "#
+            .to_string()
+        };
+
+        let rows = if let Some(mailbox) = &search.mailbox {
+            sqlx::query_as::<_, (String, String, String, String, String, String, f64)>(&sql)
+                .bind(&search.query)
+                .bind(mailbox)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await?
+        } else {
+            sqlx::query_as::<_, (String, String, String, String, String, String, f64)>(&sql)
+                .bind(&search.query)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await?
+        };
+
+        let results: Vec<SearchResult> = rows
+            .into_iter()
+            .map(
+                |(id, to, from, subject, timestamp, snippet, rank)| SearchResult {
+                    id,
+                    to,
+                    from,
+                    subject,
+                    snippet,
+                    timestamp,
+                    rank,
+                },
+            )
+            .collect();
+
+        info!(
+            "Search query '{}' returned {} results",
+            search.query,
+            results.len()
+        );
+
+        Ok(results)
     }
 }
 
