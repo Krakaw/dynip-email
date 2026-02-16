@@ -969,7 +969,7 @@ impl StorageBackend for SqliteBackend {
 
     async fn search_emails(&self, search: SearchQuery) -> Result<Vec<SearchResult>> {
         let limit = search.limit.unwrap_or(50);
-        
+
         // Build the search query
         let sql = if search.mailbox.is_some() {
             r#"
@@ -987,7 +987,8 @@ impl StorageBackend for SqliteBackend {
                 AND e.to_address = ?
                 ORDER BY rank
                 LIMIT ?
-                "#.to_string()
+                "#
+            .to_string()
         } else {
             r#"
                 SELECT 
@@ -1003,7 +1004,8 @@ impl StorageBackend for SqliteBackend {
                 WHERE emails_fts MATCH ?
                 ORDER BY rank
                 LIMIT ?
-                "#.to_string()
+                "#
+            .to_string()
         };
 
         let rows = if let Some(mailbox) = &search.mailbox {
@@ -1023,15 +1025,17 @@ impl StorageBackend for SqliteBackend {
 
         let results: Vec<SearchResult> = rows
             .into_iter()
-            .map(|(id, to, from, subject, timestamp, snippet, rank)| SearchResult {
-                id,
-                to,
-                from,
-                subject,
-                snippet,
-                timestamp,
-                rank,
-            })
+            .map(
+                |(id, to, from, subject, timestamp, snippet, rank)| SearchResult {
+                    id,
+                    to,
+                    from,
+                    subject,
+                    snippet,
+                    timestamp,
+                    rank,
+                },
+            )
             .collect();
 
         info!(
