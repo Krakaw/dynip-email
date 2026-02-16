@@ -3,6 +3,7 @@ mod auth;
 mod config;
 mod imap;
 mod mcp;
+mod rate_limit;
 mod smtp;
 mod storage;
 mod webhooks;
@@ -132,6 +133,25 @@ async fn run() -> Result<()> {
                     }
                     Err(e) => {
                         error!("❌ Email retention cleanup failed: {}", e);
+                    }
+                }
+
+                // Clean up old rate limit requests (keep for 7 days)
+                let seven_days_ago = chrono::Utc::now() - chrono::Duration::days(7);
+                match storage_clone
+                    .cleanup_old_rate_limit_requests(seven_days_ago)
+                    .await
+                {
+                    Ok(deleted_count) => {
+                        if deleted_count > 0 {
+                            info!(
+                                "🗑️  Rate limit cleanup: deleted {} old request(s)",
+                                deleted_count
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!("❌ Rate limit cleanup failed: {}", e);
                     }
                 }
             }
