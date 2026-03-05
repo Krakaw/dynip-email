@@ -1,8 +1,10 @@
 mod api;
 mod auth;
 mod config;
+mod dkim;
 mod imap;
 mod mcp;
+mod outbound;
 mod rate_limit;
 mod smtp;
 mod storage;
@@ -12,6 +14,7 @@ mod webhooks;
 mod integration_tests;
 
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 use config::Config;
 use std::sync::Arc;
 use tokio::signal;
@@ -27,32 +30,71 @@ use storage::{
 };
 use webhooks::WebhookTrigger;
 
+#[derive(Parser)]
+#[command(name = "dynip-email")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start the email server (default)
+    Serve,
+    /// Generate DKIM keys and print DNS records
+    SetupDkim {
+        #[arg(long, env = "DOMAIN_NAME", default_value = "tempmail.local")]
+        domain: String,
+        #[arg(long, default_value = "default")]
+        selector: String,
+        #[arg(long, default_value = "dkim_private.pem")]
+        output: String,
+    },
+}
+
 #[tokio::main]
 async fn main() {
-    // Set up panic handler for better error reporting
-    std::panic::set_hook(Box::new(|panic_info| {
-        eprintln!("💥 Application panicked: {}", panic_info);
-        if let Some(location) = panic_info.location() {
-            eprintln!(
-                "   at {}:{}:{}",
-                location.file(),
-                location.line(),
-                location.column()
-            );
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::SetupDkim {
+            domain,
+            selector,
+            output,
+        }) => {
+            if let Err(e) = dkim::generate_keys(&domain, &selector, &output) {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
         }
-    }));
+        Some(Commands::Serve) | None => {
+            // Set up panic handler for better error reporting
+            std::panic::set_hook(Box::new(|panic_info| {
+                eprintln!("Application panicked: {}", panic_info);
+                if let Some(location) = panic_info.location() {
+                    eprintln!(
+                        "   at {}:{}:{}",
+                        location.file(),
+                        location.line(),
+                        location.column()
+                    );
+                }
+            }));
 
-    // Initialize tracing with env filter
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+            // Initialize tracing with env filter
+            tracing_subscriber::fmt()
+                .with_env_filter(
+                    EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| EnvFilter::new("info")),
+                )
+                .init();
 
-    // Run the actual main logic and handle errors explicitly
-    if let Err(e) = run().await {
-        eprintln!("❌ Fatal error: {}", e);
-        std::process::exit(1);
+            // Run the actual main logic and handle errors explicitly
+            if let Err(e) = run().await {
+                eprintln!("Fatal error: {}", e);
+                std::process::exit(1);
+            }
+        }
     }
 }
 
@@ -219,6 +261,30 @@ async fn run() -> Result<()> {
         info!("🔓 Authentication disabled - API routes are public");
     }
 
+    // Create outbound mailer if enabled
+    let outbound_mailer = if config.outbound_enabled {
+        let dkim_signer = if let Some(ref key_path) = config.dkim_private_key_path {
+            let signer = dkim::DkimSigner::from_pem_file(
+                key_path,
+                config.dkim_selector.clone(),
+                config.dkim_domain.clone().unwrap_or_else(|| config.domain_name.clone()),
+            )?;
+            info!("DKIM signer loaded (selector: {}, domain: {})",
+                config.dkim_selector,
+                config.dkim_domain.as_deref().unwrap_or(&config.domain_name));
+            Some(Arc::new(signer))
+        } else {
+            None
+        };
+
+        let mailer = outbound::OutboundMailer::new(&config, dkim_signer)?;
+        info!("Outbound email enabled (domain: {})", mailer.from_domain());
+        Some(Arc::new(mailer))
+    } else {
+        info!("Outbound email disabled");
+        None
+    };
+
     // Create API router
     let router = api::create_router(
         storage.clone(),
@@ -227,6 +293,7 @@ async fn run() -> Result<()> {
         config.domain_name.clone(),
         webhook_trigger,
         auth_config,
+        outbound_mailer,
     );
 
     // Start MCP server if enabled
@@ -393,6 +460,14 @@ mod tests {
             jwt_secret: "test-secret".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
+            dkim_private_key_path: None,
+            dkim_selector: "default".to_string(),
+            dkim_domain: None,
+            smtp_relay_host: None,
+            smtp_relay_port: None,
+            smtp_relay_username: None,
+            smtp_relay_password: None,
         })
     }
 

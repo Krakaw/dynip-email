@@ -221,6 +221,41 @@ mod tests {
     }
 }
 
+/// Sent email model representing an outbound email
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SentEmail {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub subject: String,
+    pub body_text: String,
+    pub body_html: Option<String>,
+    pub timestamp: DateTime<Utc>,
+    pub message_id: String,
+}
+
+impl SentEmail {
+    pub fn new(
+        from: String,
+        to: String,
+        subject: String,
+        body_text: String,
+        body_html: Option<String>,
+        message_id: String,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            from,
+            to,
+            subject,
+            body_text,
+            body_html,
+            timestamp: Utc::now(),
+            message_id,
+        }
+    }
+}
+
 /// Webhook event types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum WebhookEvent {

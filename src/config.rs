@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::path::PathBuf;
 
 /// Type alias for SSL certificate data (certificates, private_key)
@@ -24,6 +24,15 @@ pub struct Config {
     pub jwt_secret: String,
     pub jwt_expiry_hours: u64,
     pub auth_domains: Option<Vec<String>>,
+    // Outbound email configuration
+    pub outbound_enabled: bool,
+    pub dkim_private_key_path: Option<PathBuf>,
+    pub dkim_selector: String,
+    pub dkim_domain: Option<String>,
+    pub smtp_relay_host: Option<String>,
+    pub smtp_relay_port: Option<u16>,
+    pub smtp_relay_username: Option<String>,
+    pub smtp_relay_password: Option<String>,
 }
 
 /// SMTP SSL/TLS configuration for Let's Encrypt certificates
@@ -152,6 +161,32 @@ impl Config {
                     .collect()
             });
 
+        // Outbound email configuration
+        let outbound_enabled = std::env::var("OUTBOUND_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+
+        let dkim_private_key_path = std::env::var("DKIM_PRIVATE_KEY_PATH")
+            .ok()
+            .map(PathBuf::from);
+
+        let dkim_selector = std::env::var("DKIM_SELECTOR")
+            .unwrap_or_else(|_| "default".to_string());
+
+        let dkim_domain = std::env::var("DKIM_DOMAIN").ok();
+
+        let smtp_relay_host = std::env::var("SMTP_RELAY_HOST").ok();
+        let smtp_relay_port = std::env::var("SMTP_RELAY_PORT")
+            .ok()
+            .and_then(|s| s.parse().ok());
+        let smtp_relay_username = std::env::var("SMTP_RELAY_USERNAME").ok();
+        let smtp_relay_password = std::env::var("SMTP_RELAY_PASSWORD").ok();
+
+        if outbound_enabled && dkim_private_key_path.is_none() {
+            bail!("OUTBOUND_ENABLED is true but DKIM_PRIVATE_KEY_PATH must be set");
+        }
+
         Ok(Config {
             smtp_port,
             smtp_starttls_port,
@@ -170,6 +205,14 @@ impl Config {
             jwt_secret,
             jwt_expiry_hours,
             auth_domains,
+            outbound_enabled,
+            dkim_private_key_path,
+            dkim_selector,
+            dkim_domain,
+            smtp_relay_host,
+            smtp_relay_port,
+            smtp_relay_username,
+            smtp_relay_password,
         })
     }
 }
@@ -338,6 +381,14 @@ mod tests {
             jwt_secret,
             jwt_expiry_hours,
             auth_domains,
+            outbound_enabled: false,
+            dkim_private_key_path: None,
+            dkim_selector: "default".to_string(),
+            dkim_domain: None,
+            smtp_relay_host: None,
+            smtp_relay_port: None,
+            smtp_relay_username: None,
+            smtp_relay_password: None,
         })
     }
 

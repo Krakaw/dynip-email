@@ -6,7 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use fts::{SearchQuery, SearchResult};
-use models::{Email, Mailbox, User, Webhook, WebhookEvent};
+use models::{Email, Mailbox, SentEmail, User, Webhook, WebhookEvent};
 
 use crate::rate_limit::{RateLimit, RateLimitRequest};
 
@@ -112,4 +112,12 @@ pub trait StorageBackend: Send + Sync {
 
     /// Search emails using FTS5 full-text search
     async fn search_emails(&self, query: SearchQuery) -> Result<Vec<SearchResult>>;
+
+    // Sent email methods
+
+    /// Store a sent email
+    async fn store_sent_email(&self, email: SentEmail) -> Result<()>;
+
+    /// Get sent emails for a given from address
+    async fn get_sent_emails(&self, from_address: &str) -> Result<Vec<SentEmail>>;
 }
