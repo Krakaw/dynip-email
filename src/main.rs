@@ -249,6 +249,7 @@ async fn run() -> Result<()> {
         jwt_secret: config.jwt_secret.clone(),
         jwt_expiry_hours: config.jwt_expiry_hours,
         auth_domains: config.auth_domains.clone(),
+        outbound_enabled: config.outbound_enabled,
     };
 
     if config.auth_enabled {

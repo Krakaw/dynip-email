@@ -553,7 +553,10 @@ pub async fn send_email(
     let message_id = mailer
         .send_email(&request)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to send email: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, to = %request.to, "Failed to send email");
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to send email: {}", e))
+        })?;
 
     // Store sent email in DB
     let sent = SentEmail::new(

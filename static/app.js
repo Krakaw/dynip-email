@@ -20,6 +20,7 @@ let originalFavicon = null;
 let authEnabled = false;
 let authToken = null;
 let currentUser = null;
+let outboundEnabled = false;
 
 // DOM elements
 const emailAddressInput = document.getElementById('emailAddress');
@@ -38,9 +39,11 @@ const searchBox = document.getElementById('searchBox');
 const searchQuery = document.getElementById('searchQuery');
 const searchBtn = document.getElementById('searchBtn');
 const searchResults = document.getElementById('searchResults');
+const composeBtn = document.getElementById('composeBtn');
 
 // Event listeners
 loadEmailsBtn.addEventListener('click', loadInbox);
+if (composeBtn) composeBtn.addEventListener('click', () => showComposeForm());
 emailAddressInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') loadInbox();
 });
@@ -132,8 +135,10 @@ async function initAuth() {
         const status = await response.json();
         
         authEnabled = status.auth_enabled;
+        outboundEnabled = status.outbound_enabled || false;
         authDomain = status.auth_domain || null;
-        
+        updateComposeButton();
+
         if (authEnabled) {
             // Show auth UI elements
             showAuthUI();
@@ -757,7 +762,7 @@ async function continueLoadInbox(address, password) {
         
         // Connect WebSocket
         connectWebSocket(address);
-        
+
         // Load webhooks for this address
         loadWebhooks(address);
     } catch (error) {
@@ -851,6 +856,7 @@ function showEmailDetail(emailId) {
             <div class="email-header-top">
                 <h2 class="email-subject">${escapeHtml(email.subject)}</h2>
                 <div class="email-actions">
+                    ${outboundEnabled ? `<button class="reply-email-btn" onclick="showReplyForm('${email.id}')" title="Reply">Reply</button>` : ''}
                     <button class="delete-email-btn" onclick="deleteEmail('${email.id}')" title="Delete Email">
                         🗑️ Delete
                     </button>
@@ -1660,5 +1666,149 @@ function cancelAddWebhook() {
 // Cancel edit webhook
 function cancelEditWebhook() {
     displayWebhooks(webhooks);
+}
+
+// ============================================================================
+// Compose / Reply Email Functions
+// ============================================================================
+
+// Show or hide the compose button based on outbound state
+function updateComposeButton() {
+    const btn = document.getElementById('composeBtn');
+    if (!btn) return;
+    if (outboundEnabled) {
+        btn.style.display = '';
+    } else {
+        btn.style.display = 'none';
+    }
+}
+
+// Show compose email modal
+function showComposeForm(prefill = {}) {
+    closeComposeModal();
+
+    const modal = document.createElement('div');
+    modal.className = 'compose-modal';
+    modal.id = 'composeModal';
+    modal.innerHTML = `
+        <div class="compose-modal-content">
+            <h2>${prefill.subject ? 'Reply' : 'Compose Email'}</h2>
+            <form id="composeForm">
+                <div class="form-group">
+                    <label for="composeTo">To:</label>
+                    <input type="email" id="composeTo" placeholder="recipient@example.com" value="${escapeHtml(prefill.to || '')}" required>
+                </div>
+                <div class="form-group">
+                    <label for="composeSubject">Subject:</label>
+                    <input type="text" id="composeSubject" placeholder="Subject" value="${escapeHtml(prefill.subject || '')}" required>
+                </div>
+                <div class="form-group">
+                    <label for="composeBody">Message:</label>
+                    <textarea id="composeBody" rows="12" placeholder="Write your message...">${escapeHtml(prefill.body || '')}</textarea>
+                </div>
+                <div id="composeError" class="form-error" style="display: none;"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Send</button>
+                    <button type="button" class="btn-secondary" onclick="closeComposeModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('composeForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await handleSendEmail();
+    });
+
+    // Focus first empty field
+    if (!prefill.to) {
+        document.getElementById('composeTo').focus();
+    } else if (!prefill.subject) {
+        document.getElementById('composeSubject').focus();
+    } else {
+        document.getElementById('composeBody').focus();
+    }
+}
+
+// Close compose modal
+function closeComposeModal() {
+    const modal = document.getElementById('composeModal');
+    if (modal) modal.remove();
+}
+
+// Handle send email form submission
+async function handleSendEmail() {
+    const to = document.getElementById('composeTo').value.trim();
+    const subject = document.getElementById('composeSubject').value.trim();
+    const bodyText = document.getElementById('composeBody').value;
+    const errorDiv = document.getElementById('composeError');
+
+    if (!to || !subject) {
+        errorDiv.textContent = 'To and Subject are required';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    const sendBtn = document.querySelector('#composeForm .btn-primary');
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending...';
+
+    try {
+        const response = await authFetch('/api/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to,
+                subject,
+                body_text: bodyText,
+                from_address: currentAddress.split('@')[0]
+            })
+        });
+
+        if (response.ok) {
+            closeComposeModal();
+        } else {
+            const error = await response.text();
+            errorDiv.textContent = error || 'Failed to send email';
+            errorDiv.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Send email error:', error);
+        errorDiv.textContent = 'Failed to send email. Please try again.';
+        errorDiv.style.display = 'block';
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+    }
+}
+
+// Show reply form pre-filled from an email
+function showReplyForm(emailId) {
+    const email = emails.find(e => e.id === emailId);
+    if (!email) return;
+
+    const replySubject = email.subject.startsWith('Re: ') ? email.subject : `Re: ${email.subject}`;
+
+    // Extract plain text body for quoting
+    const isHtml = email.body.includes('<') && email.body.includes('>');
+    const plainBody = isHtml ? '' : email.body;
+    const quotedBody = plainBody
+        ? `\n\n---\nOn ${new Date(email.timestamp).toLocaleString()}, ${email.from} wrote:\n\n${plainBody.split('\n').map(l => '> ' + l).join('\n')}`
+        : '';
+
+    // Extract sender email address for the To field
+    let replyTo = email.from;
+    const emailMatch = email.from.match(/<([^>]+)>/);
+    if (emailMatch) {
+        replyTo = emailMatch[1];
+    }
+
+    showComposeForm({
+        to: replyTo,
+        subject: replySubject,
+        body: quotedBody
+    });
 }
 

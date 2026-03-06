@@ -41,6 +41,7 @@ pub struct AuthConfig {
     pub jwt_expiry_hours: u64,
     /// Optional domain restrictions for registration (e.g., vec!["example.com", "company.com"])
     pub auth_domains: Option<Vec<String>>,
+    pub outbound_enabled: bool,
 }
 
 /// Request body for registration
@@ -303,7 +304,8 @@ pub async fn status(
         "auth_enabled": config.enabled,
         "has_users": has_users,
         "registration_open": config.enabled && !has_users,
-        "domain_restricted": config.auth_domains.is_some()
+        "domain_restricted": config.auth_domains.is_some(),
+        "outbound_enabled": config.outbound_enabled
     })))
 }
 
@@ -432,6 +434,7 @@ mod tests {
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
         };
 
         let user = User::new("test@example.com".to_string(), "hash".to_string());
@@ -449,6 +452,7 @@ mod tests {
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
         };
 
         let result = verify_token("invalid-token", &config);
@@ -462,6 +466,7 @@ mod tests {
             jwt_secret: "secret1".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
         };
 
         let config2 = AuthConfig {
@@ -469,6 +474,7 @@ mod tests {
             jwt_secret: "secret2".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
         };
 
         let user = User::new("test@example.com".to_string(), "hash".to_string());
@@ -522,6 +528,7 @@ mod tests {
             jwt_secret: "test-secret-key-for-testing".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
         }
     }
 
