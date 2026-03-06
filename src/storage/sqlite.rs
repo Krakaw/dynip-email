@@ -1112,8 +1112,8 @@ impl StorageBackend for SqliteBackend {
 
         let emails = rows
             .into_iter()
-            .map(|(id, from, to, subject, body_text, body_html, timestamp, message_id)| {
-                SentEmail {
+            .map(
+                |(id, from, to, subject, body_text, body_html, timestamp, message_id)| SentEmail {
                     id,
                     from,
                     to,
@@ -1124,8 +1124,8 @@ impl StorageBackend for SqliteBackend {
                         .parse::<DateTime<Utc>>()
                         .unwrap_or_else(|_| Utc::now()),
                     message_id,
-                }
-            })
+                },
+            )
             .collect();
 
         Ok(emails)
@@ -1455,29 +1455,38 @@ mod tests {
     async fn test_sent_emails_filtered_by_address() {
         let backend = SqliteBackend::new("sqlite::memory:").await.unwrap();
 
-        backend.store_sent_email(SentEmail::new(
-            "alice@example.com".to_string(),
-            "bob@example.com".to_string(),
-            "From Alice".to_string(),
-            "Hi Bob".to_string(),
-            None,
-            "<a@example.com>".to_string(),
-        )).await.unwrap();
+        backend
+            .store_sent_email(SentEmail::new(
+                "alice@example.com".to_string(),
+                "bob@example.com".to_string(),
+                "From Alice".to_string(),
+                "Hi Bob".to_string(),
+                None,
+                "<a@example.com>".to_string(),
+            ))
+            .await
+            .unwrap();
 
-        backend.store_sent_email(SentEmail::new(
-            "charlie@example.com".to_string(),
-            "bob@example.com".to_string(),
-            "From Charlie".to_string(),
-            "Hi Bob".to_string(),
-            None,
-            "<c@example.com>".to_string(),
-        )).await.unwrap();
+        backend
+            .store_sent_email(SentEmail::new(
+                "charlie@example.com".to_string(),
+                "bob@example.com".to_string(),
+                "From Charlie".to_string(),
+                "Hi Bob".to_string(),
+                None,
+                "<c@example.com>".to_string(),
+            ))
+            .await
+            .unwrap();
 
         let alice_sent = backend.get_sent_emails("alice@example.com").await.unwrap();
         assert_eq!(alice_sent.len(), 1);
         assert_eq!(alice_sent[0].subject, "From Alice");
 
-        let charlie_sent = backend.get_sent_emails("charlie@example.com").await.unwrap();
+        let charlie_sent = backend
+            .get_sent_emails("charlie@example.com")
+            .await
+            .unwrap();
         assert_eq!(charlie_sent.len(), 1);
         assert_eq!(charlie_sent[0].subject, "From Charlie");
 

@@ -84,8 +84,7 @@ async fn main() {
             // Initialize tracing with env filter
             tracing_subscriber::fmt()
                 .with_env_filter(
-                    EnvFilter::try_from_default_env()
-                        .unwrap_or_else(|_| EnvFilter::new("info")),
+                    EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
                 )
                 .init();
 
@@ -268,11 +267,16 @@ async fn run() -> Result<()> {
             let signer = dkim::DkimSigner::from_pem_file(
                 key_path,
                 config.dkim_selector.clone(),
-                config.dkim_domain.clone().unwrap_or_else(|| config.domain_name.clone()),
+                config
+                    .dkim_domain
+                    .clone()
+                    .unwrap_or_else(|| config.domain_name.clone()),
             )?;
-            info!("DKIM signer loaded (selector: {}, domain: {})",
+            info!(
+                "DKIM signer loaded (selector: {}, domain: {})",
                 config.dkim_selector,
-                config.dkim_domain.as_deref().unwrap_or(&config.domain_name));
+                config.dkim_domain.as_deref().unwrap_or(&config.domain_name)
+            );
             Some(Arc::new(signer))
         } else {
             None

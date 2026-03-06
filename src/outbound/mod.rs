@@ -67,10 +67,7 @@ impl OutboundMailer {
     /// Send an email, returning the message ID
     #[tracing::instrument(skip(self, request), fields(to = %request.to, subject = %request.subject))]
     pub async fn send_email(&self, request: &SendEmailRequest) -> Result<String> {
-        let from_local = request
-            .from_address
-            .as_deref()
-            .unwrap_or("noreply");
+        let from_local = request.from_address.as_deref().unwrap_or("noreply");
         let from_email = format!("{}@{}", from_local, self.from_domain);
 
         let from_mailbox: Mailbox = if let Some(ref name) = request.from_name {
@@ -78,15 +75,10 @@ impl OutboundMailer {
                 .parse()
                 .context("Invalid from address")?
         } else {
-            from_email
-                .parse()
-                .context("Invalid from address")?
+            from_email.parse().context("Invalid from address")?
         };
 
-        let to_mailbox: Mailbox = request
-            .to
-            .parse()
-            .context("Invalid recipient address")?;
+        let to_mailbox: Mailbox = request.to.parse().context("Invalid recipient address")?;
 
         // Build the message
         let builder = Message::builder()
@@ -145,16 +137,19 @@ impl OutboundMailer {
         // Try STARTTLS first, fall back to plain SMTP
         let transport = match AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&relay.host) {
             Ok(mut builder) => {
-                builder = builder.port(relay.port).timeout(Some(Duration::from_secs(30)));
+                builder = builder
+                    .port(relay.port)
+                    .timeout(Some(Duration::from_secs(30)));
                 if let (Some(ref user), Some(ref pass)) = (&relay.username, &relay.password) {
                     builder = builder.credentials(Credentials::new(user.clone(), pass.clone()));
                 }
                 builder.build()
             }
             Err(_) => {
-                let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&relay.host)
-                    .port(relay.port)
-                    .timeout(Some(Duration::from_secs(30)));
+                let mut builder =
+                    AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&relay.host)
+                        .port(relay.port)
+                        .timeout(Some(Duration::from_secs(30)));
                 if let (Some(ref user), Some(ref pass)) = (&relay.username, &relay.password) {
                     builder = builder.credentials(Credentials::new(user.clone(), pass.clone()));
                 }
@@ -210,10 +205,7 @@ impl OutboundMailer {
 
         let envelope = lettre::address::Envelope::new(
             self.extract_sender_from_message(message),
-            vec![to.parse().ok()]
-                .into_iter()
-                .flatten()
-                .collect(),
+            vec![to.parse().ok()].into_iter().flatten().collect(),
         )
         .context("Failed to create envelope")?;
 

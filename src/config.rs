@@ -171,8 +171,8 @@ impl Config {
             .ok()
             .map(PathBuf::from);
 
-        let dkim_selector = std::env::var("DKIM_SELECTOR")
-            .unwrap_or_else(|_| "default".to_string());
+        let dkim_selector =
+            std::env::var("DKIM_SELECTOR").unwrap_or_else(|_| "default".to_string());
 
         let dkim_domain = std::env::var("DKIM_DOMAIN").ok();
 
@@ -615,5 +615,4 @@ mod tests {
         let result = ssl_config.load_certificates();
         assert!(result.is_err()); // Expected to fail due to invalid PEM content
     }
-
 }

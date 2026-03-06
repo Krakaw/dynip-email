@@ -19,8 +19,7 @@ pub fn generate_keys(domain: &str, selector: &str, output: &str) -> Result<()> {
     let pem = private_key
         .to_pkcs1_pem(LineEnding::LF)
         .context("Failed to encode private key as PEM")?;
-    std::fs::write(output, pem.as_bytes())
-        .context("Failed to write private key file")?;
+    std::fs::write(output, pem.as_bytes()).context("Failed to write private key file")?;
 
     // Set restrictive permissions on the key file
     #[cfg(unix)]
@@ -44,23 +43,17 @@ pub fn generate_keys(domain: &str, selector: &str, output: &str) -> Result<()> {
     println!("=== DNS Records ===\n");
 
     println!("1. DKIM TXT Record:");
-    println!(
-        "   {selector}._domainkey.{domain} IN TXT \"v=DKIM1; k=rsa; p={pub_b64}\"\n"
-    );
+    println!("   {selector}._domainkey.{domain} IN TXT \"v=DKIM1; k=rsa; p={pub_b64}\"\n");
 
     println!("2. SPF TXT Record:");
     println!("   {domain} IN TXT \"v=spf1 a mx ip4:<YOUR_SERVER_IP> ~all\"\n");
 
     println!("3. DMARC TXT Record:");
-    println!(
-        "   _dmarc.{domain} IN TXT \"v=DMARC1; p=none; rua=mailto:postmaster@{domain}\"\n"
-    );
+    println!("   _dmarc.{domain} IN TXT \"v=DMARC1; p=none; rua=mailto:postmaster@{domain}\"\n");
 
     println!("4. MTA-STS (optional):");
     println!("   _mta-sts.{domain} IN TXT \"v=STSv1; id=<TIMESTAMP>\"");
-    println!(
-        "   Host a policy file at https://mta-sts.{domain}/.well-known/mta-sts.txt\n"
-    );
+    println!("   Host a policy file at https://mta-sts.{domain}/.well-known/mta-sts.txt\n");
 
     println!("=== Setup Instructions ===\n");
     println!("1. Add the DNS records above to your domain's DNS zone");
@@ -107,8 +100,7 @@ impl DkimSigner {
             .context("Failed to parse PEM")?
             .context("No private key found in PEM")?;
 
-        let pk = RsaKey::<Sha256>::from_key_der(der)
-            .context("Failed to parse DKIM private key")?;
+        let pk = RsaKey::<Sha256>::from_key_der(der).context("Failed to parse DKIM private key")?;
 
         let signer = MailAuthDkimSigner::from_key(pk)
             .domain(&self.domain)
@@ -137,5 +129,4 @@ impl DkimSigner {
 
         Ok(signed_message)
     }
-
 }

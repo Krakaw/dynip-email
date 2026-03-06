@@ -1173,12 +1173,7 @@ mod tests {
             .layer(middleware::from_fn_with_state(config, require_auth_always));
 
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/test")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/test").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
