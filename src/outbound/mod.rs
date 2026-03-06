@@ -38,15 +38,12 @@ pub struct SendEmailRequest {
 
 impl OutboundMailer {
     pub fn new(config: &Config, dkim_signer: Option<Arc<DkimSigner>>) -> Result<Self> {
-        let relay = match &config.smtp_relay_host {
-            Some(host) => Some(RelayConfig {
-                host: host.clone(),
-                port: config.smtp_relay_port.unwrap_or(587),
-                username: config.smtp_relay_username.clone(),
-                password: config.smtp_relay_password.clone(),
-            }),
-            None => None,
-        };
+        let relay = config.smtp_relay_host.as_ref().map(|host| RelayConfig {
+            host: host.clone(),
+            port: config.smtp_relay_port.unwrap_or(587),
+            username: config.smtp_relay_username.clone(),
+            password: config.smtp_relay_password.clone(),
+        });
 
         let from_domain = config
             .dkim_domain
@@ -60,7 +57,7 @@ impl OutboundMailer {
         })
     }
 
-    pub fn from_domain(&self) -> &str {
+    pub fn sender_domain(&self) -> &str {
         &self.from_domain
     }
 
@@ -306,7 +303,7 @@ mod tests {
     #[test]
     fn test_from_domain() {
         let mailer = test_mailer();
-        assert_eq!(mailer.from_domain(), "example.com");
+        assert_eq!(mailer.sender_domain(), "example.com");
     }
 
     #[test]
