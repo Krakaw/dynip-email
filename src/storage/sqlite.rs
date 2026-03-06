@@ -7,7 +7,7 @@ use tracing::{error, info, warn};
 
 use super::{
     fts::{SearchQuery, SearchResult},
-    models::{Email, Mailbox, User, Webhook, WebhookEvent},
+    models::{Email, Mailbox, SentEmail, User, Webhook, WebhookEvent},
     StorageBackend,
 };
 
@@ -177,6 +177,32 @@ impl SqliteBackend {
         sqlx::query(
             r#"
             CREATE INDEX IF NOT EXISTS idx_rate_limit_requests_mailbox_timestamp ON rate_limit_requests(mailbox_address, timestamp)
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Create sent_emails table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS sent_emails (
+                id TEXT PRIMARY KEY,
+                from_address TEXT NOT NULL,
+                to_address TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                body_text TEXT NOT NULL,
+                body_html TEXT,
+                timestamp TEXT NOT NULL,
+                message_id TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_sent_emails_from ON sent_emails(from_address)
             "#,
         )
         .execute(&pool)
@@ -1046,6 +1072,61 @@ impl StorageBackend for SqliteBackend {
 
         Ok(results)
     }
+
+    async fn store_sent_email(&self, email: SentEmail) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO sent_emails (id, from_address, to_address, subject, body_text, body_html, timestamp, message_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&email.id)
+        .bind(&email.from)
+        .bind(&email.to)
+        .bind(&email.subject)
+        .bind(&email.body_text)
+        .bind(&email.body_html)
+        .bind(email.timestamp.to_rfc3339())
+        .bind(&email.message_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn get_sent_emails(&self, from_address: &str) -> Result<Vec<SentEmail>> {
+        let rows = sqlx::query_as::<_, (String, String, String, String, String, Option<String>, String, String)>(
+            r#"
+            SELECT id, from_address, to_address, subject, body_text, body_html, timestamp, message_id
+            FROM sent_emails
+            WHERE from_address = ?
+            ORDER BY timestamp DESC
+            "#,
+        )
+        .bind(from_address)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let emails = rows
+            .into_iter()
+            .map(|(id, from, to, subject, body_text, body_html, timestamp, message_id)| {
+                SentEmail {
+                    id,
+                    from,
+                    to,
+                    subject,
+                    body_text,
+                    body_html,
+                    timestamp: timestamp
+                        .parse::<DateTime<Utc>>()
+                        .unwrap_or_else(|_| Utc::now()),
+                    message_id,
+                }
+            })
+            .collect();
+
+        Ok(emails)
+    }
 }
 
 #[cfg(test)]
@@ -1321,5 +1402,83 @@ mod tests {
             .await
             .unwrap();
         assert!(emails.is_empty()); // Should not panic, just return empty
+    }
+
+    #[tokio::test]
+    async fn test_store_and_retrieve_sent_email() {
+        let backend = SqliteBackend::new("sqlite::memory:").await.unwrap();
+
+        let sent = SentEmail::new(
+            "sender@example.com".to_string(),
+            "recipient@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Hello!".to_string(),
+            None,
+            "<msg123@example.com>".to_string(),
+        );
+        let sent_id = sent.id.clone();
+
+        backend.store_sent_email(sent).await.unwrap();
+
+        let results = backend.get_sent_emails("sender@example.com").await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, sent_id);
+        assert_eq!(results[0].to, "recipient@example.com");
+        assert_eq!(results[0].subject, "Test Subject");
+        assert_eq!(results[0].body_text, "Hello!");
+        assert!(results[0].body_html.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_sent_email_with_html() {
+        let backend = SqliteBackend::new("sqlite::memory:").await.unwrap();
+
+        let sent = SentEmail::new(
+            "sender@example.com".to_string(),
+            "recipient@example.com".to_string(),
+            "HTML Email".to_string(),
+            "Plain text".to_string(),
+            Some("<h1>Hello</h1>".to_string()),
+            "<msg456@example.com>".to_string(),
+        );
+
+        backend.store_sent_email(sent).await.unwrap();
+
+        let results = backend.get_sent_emails("sender@example.com").await.unwrap();
+        assert_eq!(results[0].body_html, Some("<h1>Hello</h1>".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_sent_emails_filtered_by_address() {
+        let backend = SqliteBackend::new("sqlite::memory:").await.unwrap();
+
+        backend.store_sent_email(SentEmail::new(
+            "alice@example.com".to_string(),
+            "bob@example.com".to_string(),
+            "From Alice".to_string(),
+            "Hi Bob".to_string(),
+            None,
+            "<a@example.com>".to_string(),
+        )).await.unwrap();
+
+        backend.store_sent_email(SentEmail::new(
+            "charlie@example.com".to_string(),
+            "bob@example.com".to_string(),
+            "From Charlie".to_string(),
+            "Hi Bob".to_string(),
+            None,
+            "<c@example.com>".to_string(),
+        )).await.unwrap();
+
+        let alice_sent = backend.get_sent_emails("alice@example.com").await.unwrap();
+        assert_eq!(alice_sent.len(), 1);
+        assert_eq!(alice_sent[0].subject, "From Alice");
+
+        let charlie_sent = backend.get_sent_emails("charlie@example.com").await.unwrap();
+        assert_eq!(charlie_sent.len(), 1);
+        assert_eq!(charlie_sent[0].subject, "From Charlie");
+
+        let nobody = backend.get_sent_emails("nobody@example.com").await.unwrap();
+        assert!(nobody.is_empty());
     }
 }

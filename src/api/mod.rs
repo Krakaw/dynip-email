@@ -16,14 +16,16 @@ use tower_http::{
 use tracing::info;
 
 use crate::auth::{self, AuthConfig};
+use crate::outbound::OutboundMailer;
 use crate::rate_limit;
 use crate::storage::{models::Email, StorageBackend};
 use crate::webhooks::WebhookTrigger;
 use admin::{delete_rate_limit, get_rate_limit, get_rate_limit_stats, set_rate_limit};
 use handlers::{
     check_mailbox_status, claim_mailbox, create_webhook, delete_email, delete_webhook,
-    get_email_by_id, get_emails_for_address, get_webhook_by_id, get_webhooks_for_mailbox,
-    release_mailbox, search_emails, test_webhook, update_webhook, AppConfig,
+    get_email_by_id, get_emails_for_address, get_sent_emails, get_webhook_by_id,
+    get_webhooks_for_mailbox, release_mailbox, search_emails, send_email, test_webhook,
+    update_webhook, AppConfig,
 };
 use websocket::{websocket_handler, WsState};
 
@@ -35,6 +37,7 @@ pub fn create_router(
     domain_name: String,
     webhook_trigger: WebhookTrigger,
     auth_config: AuthConfig,
+    outbound_mailer: Option<Arc<OutboundMailer>>,
 ) -> Router {
     let ws_state = WsState {
         email_receiver: email_sender.clone(),
@@ -107,6 +110,35 @@ pub fn create_router(
             auth::require_auth,
         ));
 
+    // Add outbound email routes if mailer is configured
+    // SECURITY: Outbound routes ALWAYS require authentication to prevent open relay.
+    // Config validation ensures AUTH_ENABLED=true when OUTBOUND_ENABLED=true,
+    // and we use require_auth_always as defense in depth.
+    let outbound_routes = if let Some(mailer) = outbound_mailer {
+        let send_route = Router::new()
+            .route("/api/send", post(send_email))
+            .with_state((storage.clone(), mailer, app_config.clone()));
+
+        let sent_route = Router::new()
+            .route("/api/sent/:address", get(get_sent_emails))
+            .with_state((storage.clone(), app_config.clone()));
+
+        Some(
+            send_route
+                .merge(sent_route)
+                .layer(middleware::from_fn_with_state(
+                    storage.clone(),
+                    rate_limit::rate_limit_middleware,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    auth_config.clone(),
+                    auth::require_auth_always,
+                )),
+        )
+    } else {
+        None
+    };
+
     // Build auth routes (public, no auth required)
     let auth_routes = Router::new()
         .route("/api/auth/status", get(auth::status))
@@ -120,14 +152,21 @@ pub fn create_router(
             auth::auth_config_middleware,
         ));
 
-    Router::new()
+    let mut router = Router::new()
         // WebSocket route (needs domain for normalization)
         .route("/api/ws/:address", get(websocket_handler))
         .with_state(ws_state)
         // Merge auth routes (public)
         .merge(auth_routes)
         // Merge protected routes
-        .merge(protected_routes)
+        .merge(protected_routes);
+
+    // Merge outbound routes if available
+    if let Some(outbound) = outbound_routes {
+        router = router.merge(outbound);
+    }
+
+    router
         // Serve static files
         .nest_service("/", ServeDir::new("static"))
         // CORS for development

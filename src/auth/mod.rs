@@ -41,6 +41,7 @@ pub struct AuthConfig {
     pub jwt_expiry_hours: u64,
     /// Optional domain restrictions for registration (e.g., vec!["example.com", "company.com"])
     pub auth_domains: Option<Vec<String>>,
+    pub outbound_enabled: bool,
 }
 
 /// Request body for registration
@@ -303,7 +304,8 @@ pub async fn status(
         "auth_enabled": config.enabled,
         "has_users": has_users,
         "registration_open": config.enabled && !has_users,
-        "domain_restricted": config.auth_domains.is_some()
+        "domain_restricted": config.auth_domains.is_some(),
+        "outbound_enabled": config.outbound_enabled
     })))
 }
 
@@ -386,6 +388,36 @@ pub async fn auth_config_middleware(
     next.run(request).await
 }
 
+/// Middleware that ALWAYS requires authentication regardless of auth_enabled.
+/// Used for security-critical routes like outbound email to prevent open relay.
+pub async fn require_auth_always(
+    State(config): State<AuthConfig>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let auth_header = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|h| h.to_str().ok());
+
+    match auth_header {
+        Some(header) if header.starts_with("Bearer ") => {
+            let token = &header[7..];
+            match verify_token(token, &config) {
+                Ok(_) => next.run(request).await,
+                Err(e) => {
+                    (StatusCode::UNAUTHORIZED, format!("Invalid token: {}", e)).into_response()
+                }
+            }
+        }
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            "Authentication required for sending email",
+        )
+            .into_response(),
+    }
+}
+
 /// Middleware to require authentication when auth is enabled
 pub async fn require_auth(
     State(config): State<AuthConfig>,
@@ -432,6 +464,7 @@ mod tests {
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
         };
 
         let user = User::new("test@example.com".to_string(), "hash".to_string());
@@ -449,6 +482,7 @@ mod tests {
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
         };
 
         let result = verify_token("invalid-token", &config);
@@ -462,6 +496,7 @@ mod tests {
             jwt_secret: "secret1".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
         };
 
         let config2 = AuthConfig {
@@ -469,6 +504,7 @@ mod tests {
             jwt_secret: "secret2".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
         };
 
         let user = User::new("test@example.com".to_string(), "hash".to_string());
@@ -522,6 +558,7 @@ mod tests {
             jwt_secret: "test-secret-key-for-testing".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            outbound_enabled: false,
         }
     }
 
@@ -1120,5 +1157,81 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let json = body_json(response).await;
         assert_eq!(json["domain_restricted"], false);
+    }
+
+    // require_auth_always tests
+
+    #[tokio::test]
+    async fn test_require_auth_always_blocks_when_auth_disabled() {
+        let config = AuthConfig {
+            enabled: false,
+            ..test_auth_config()
+        };
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .layer(middleware::from_fn_with_state(config, require_auth_always));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Must be UNAUTHORIZED even though auth is disabled
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_require_auth_always_passes_with_valid_token() {
+        let config = test_auth_config();
+        let user = User::new("test@example.com".to_string(), "hash".to_string());
+        let token = generate_token(&user, &config).unwrap();
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .layer(middleware::from_fn_with_state(config, require_auth_always));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/test")
+                    .header(AUTHORIZATION, format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_require_auth_always_rejects_invalid_token() {
+        let config = AuthConfig {
+            enabled: false,
+            ..test_auth_config()
+        };
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .layer(middleware::from_fn_with_state(config, require_auth_always));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/test")
+                    .header(AUTHORIZATION, "Bearer invalid-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }

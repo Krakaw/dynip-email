@@ -6,9 +6,10 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::outbound::{OutboundMailer, SendEmailRequest};
 use crate::storage::{
     fts::SearchQuery,
-    models::{Webhook, WebhookEvent},
+    models::{SentEmail, Webhook, WebhookEvent},
     StorageBackend,
 };
 use crate::webhooks::WebhookTrigger;
@@ -530,6 +531,67 @@ pub async fn test_webhook(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to test webhook: {}", e),
+        )),
+    }
+}
+
+/// Send an email via the outbound mailer
+pub async fn send_email(
+    State((storage, mailer, config)): State<(Arc<dyn StorageBackend>, Arc<OutboundMailer>, AppConfig)>,
+    Json(request): Json<SendEmailRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    // Validate to address
+    if !request.to.contains('@') {
+        return Err((StatusCode::BAD_REQUEST, "Invalid recipient address".to_string()));
+    }
+
+    // Build from address
+    let from_local = request.from_address.as_deref().unwrap_or("noreply");
+    let from_address = format!("{}@{}", from_local, config.domain_name);
+
+    // Send the email
+    let message_id = mailer
+        .send_email(&request)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, to = %request.to, "Failed to send email");
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to send email: {}", e))
+        })?;
+
+    // Store sent email in DB
+    let sent = SentEmail::new(
+        from_address.clone(),
+        request.to.clone(),
+        request.subject.clone(),
+        request.body_text.clone(),
+        request.body_html.clone(),
+        message_id.clone(),
+    );
+
+    if let Err(e) = storage.store_sent_email(sent).await {
+        tracing::warn!("Failed to store sent email: {}", e);
+    }
+
+    Ok(Json(json!({
+        "message_id": message_id,
+        "from": from_address,
+        "to": request.to,
+        "subject": request.subject,
+    })))
+}
+
+/// Get sent emails for a given from address
+pub async fn get_sent_emails(
+    Path(address): Path<String>,
+    State((storage, config)): State<(Arc<dyn StorageBackend>, AppConfig)>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let normalized = config.normalize_address(&address);
+
+    match storage.get_sent_emails(&normalized).await {
+        Ok(emails) => Ok(Json(json!({ "sent_emails": emails }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to fetch sent emails: {}", e),
         )),
     }
 }

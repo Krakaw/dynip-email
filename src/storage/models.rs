@@ -219,6 +219,100 @@ mod tests {
         assert_eq!(deserialized.size, attachment.size);
         assert_eq!(deserialized.content, attachment.content);
     }
+
+    #[test]
+    fn test_sent_email_creation() {
+        let sent = SentEmail::new(
+            "sender@example.com".to_string(),
+            "recipient@example.com".to_string(),
+            "Test Subject".to_string(),
+            "Hello, world!".to_string(),
+            None,
+            "<msg123@example.com>".to_string(),
+        );
+
+        assert_eq!(sent.from, "sender@example.com");
+        assert_eq!(sent.to, "recipient@example.com");
+        assert_eq!(sent.subject, "Test Subject");
+        assert_eq!(sent.body_text, "Hello, world!");
+        assert!(sent.body_html.is_none());
+        assert_eq!(sent.message_id, "<msg123@example.com>");
+        assert!(!sent.id.is_empty());
+
+        let now = Utc::now();
+        let diff = now.signed_duration_since(sent.timestamp);
+        assert!(diff.num_seconds() < 5);
+    }
+
+    #[test]
+    fn test_sent_email_with_html() {
+        let sent = SentEmail::new(
+            "sender@example.com".to_string(),
+            "recipient@example.com".to_string(),
+            "HTML Email".to_string(),
+            "Plain text".to_string(),
+            Some("<h1>Hello</h1>".to_string()),
+            "<msg456@example.com>".to_string(),
+        );
+
+        assert_eq!(sent.body_html, Some("<h1>Hello</h1>".to_string()));
+    }
+
+    #[test]
+    fn test_sent_email_serialization() {
+        let sent = SentEmail::new(
+            "sender@example.com".to_string(),
+            "recipient@example.com".to_string(),
+            "Test".to_string(),
+            "Body".to_string(),
+            None,
+            "<msg@example.com>".to_string(),
+        );
+
+        let json = serde_json::to_string(&sent).unwrap();
+        assert!(json.contains("sender@example.com"));
+        assert!(json.contains("recipient@example.com"));
+
+        let deserialized: SentEmail = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.from, sent.from);
+        assert_eq!(deserialized.to, sent.to);
+        assert_eq!(deserialized.subject, sent.subject);
+    }
+}
+
+/// Sent email model representing an outbound email
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SentEmail {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub subject: String,
+    pub body_text: String,
+    pub body_html: Option<String>,
+    pub timestamp: DateTime<Utc>,
+    pub message_id: String,
+}
+
+impl SentEmail {
+    pub fn new(
+        from: String,
+        to: String,
+        subject: String,
+        body_text: String,
+        body_html: Option<String>,
+        message_id: String,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            from,
+            to,
+            subject,
+            body_text,
+            body_html,
+            timestamp: Utc::now(),
+            message_id,
+        }
+    }
 }
 
 /// Webhook event types
