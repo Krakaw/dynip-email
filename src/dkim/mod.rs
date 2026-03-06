@@ -66,6 +66,7 @@ pub fn generate_keys(domain: &str, selector: &str, output: &str) -> Result<()> {
     println!("1. Add the DNS records above to your domain's DNS zone");
     println!("2. Replace <YOUR_SERVER_IP> in the SPF record with your server's public IP");
     println!("3. Set these environment variables to enable outbound email:");
+    println!("   AUTH_ENABLED=true  (required - prevents open relay)");
     println!("   OUTBOUND_ENABLED=true");
     println!("   DKIM_PRIVATE_KEY_PATH={output}");
     println!("   DKIM_SELECTOR={selector}");

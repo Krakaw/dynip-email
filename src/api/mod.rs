@@ -111,6 +111,9 @@ pub fn create_router(
         ));
 
     // Add outbound email routes if mailer is configured
+    // SECURITY: Outbound routes ALWAYS require authentication to prevent open relay.
+    // Config validation ensures AUTH_ENABLED=true when OUTBOUND_ENABLED=true,
+    // and we use require_auth_always as defense in depth.
     let outbound_routes = if let Some(mailer) = outbound_mailer {
         let send_route = Router::new()
             .route("/api/send", post(send_email))
@@ -129,7 +132,7 @@ pub fn create_router(
                 ))
                 .layer(middleware::from_fn_with_state(
                     auth_config.clone(),
-                    auth::require_auth,
+                    auth::require_auth_always,
                 )),
         )
     } else {

@@ -183,8 +183,13 @@ impl Config {
         let smtp_relay_username = std::env::var("SMTP_RELAY_USERNAME").ok();
         let smtp_relay_password = std::env::var("SMTP_RELAY_PASSWORD").ok();
 
-        if outbound_enabled && dkim_private_key_path.is_none() {
-            bail!("OUTBOUND_ENABLED is true but DKIM_PRIVATE_KEY_PATH must be set");
+        if outbound_enabled {
+            if dkim_private_key_path.is_none() {
+                bail!("OUTBOUND_ENABLED is true but DKIM_PRIVATE_KEY_PATH must be set");
+            }
+            if !auth_enabled {
+                bail!("OUTBOUND_ENABLED requires AUTH_ENABLED=true to prevent open relay");
+            }
         }
 
         Ok(Config {
@@ -610,4 +615,5 @@ mod tests {
         let result = ssl_config.load_certificates();
         assert!(result.is_err()); // Expected to fail due to invalid PEM content
     }
+
 }
