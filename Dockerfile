@@ -1,5 +1,5 @@
 # Multi-stage build for dynip-email
-FROM rust:1.90-slim AS builder
+FROM rust:1.99.1-slim AS builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
