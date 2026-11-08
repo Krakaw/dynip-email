@@ -72,6 +72,12 @@ function plain(e) {
     return e._plain;
 }
 
+// HTML mail often opens with a preheader or heading that restates the subject.
+function preview(e) {
+    const t = plain(e), sub = (e.subject || '').trim();
+    return (sub && t.toLowerCase().startsWith(sub.toLowerCase()) ? t.slice(sub.length).replace(/^[\s:|–—-]+/, '') : t).slice(0, 160);
+}
+
 // FTS snippets are raw body text wrapped in <mark>; escape everything else.
 const safeSnippet = (s) => esc(s).replace(/&lt;(\/?)mark&gt;/g, '<$1mark>');
 
@@ -627,13 +633,13 @@ function setView(v) {
     closeHookForm();
     closeDrawer();
     render();
-    if (v === 'search') $('searchInput').focus();
 }
 
 function render() {
     const has = !!S.address, admin = !!S.user?.is_admin;
     const adminList = S.view === 'admin' && !has;
-    const searching = S.view === 'search' && has;
+    const inbox = S.view === 'inbox' && has;
+    const searching = inbox && !!S.query;
     const hooks = S.view === 'webhooks' && has && !S.adminMode;
     const unread = S.emails.filter((e) => e.isNew).length;
     const canCompose = S.outbound && has && !S.adminMode && !needsLogin();
@@ -654,7 +660,6 @@ function render() {
 
     const navs = [
         { key: 'inbox', label: 'Inbox', count: has ? (unread ? `${unread} new` : String(S.emails.length)) : '', on: has },
-        { key: 'search', label: 'Search', count: '', on: has && !S.adminMode },
         { key: 'webhooks', label: 'Webhooks', count: has && !S.adminMode ? String(S.webhooks.length) : '', on: has && !S.adminMode },
     ];
     if (admin) navs.push({ key: 'admin', label: 'All inboxes', count: S.adminTotal ? String(S.adminTotal) : '', on: true });
@@ -672,7 +677,7 @@ function render() {
     $('listPane').hidden = $('readerPane').hidden = showEmpty || hooks;
     if (showEmpty) renderRecents();
     if (hooks) renderHooks();
-    if (!showEmpty && !hooks) renderList(adminList, searching);
+    if (!showEmpty && !hooks) renderList(adminList, searching, inbox);
 
     const selEmail = !adminList && S.emails.find((e) => e.id === S.sel);
     $('app').classList.toggle('detail', !!selEmail);
@@ -686,9 +691,9 @@ function renderRecents() {
         list.map((a) => `<button data-open="${esc(a)}"><span>${esc(a)}</span></button>`).join('');
 }
 
-function renderList(adminList, searching) {
+function renderList(adminList, searching, inbox) {
     $('adminBanner').hidden = !S.adminMode;
-    $('searchBox').hidden = !searching;
+    $('searchBox').hidden = !inbox || S.adminMode;
     $('liveBadge').hidden = !S.address || S.adminMode || S.loading;
     $('liveBadge').className = `badge ${S.connected ? 'ok' : ''}`;
     $('liveText').textContent = S.connected ? 'Live' : 'Reconnecting';
@@ -708,7 +713,7 @@ function renderList(adminList, searching) {
         title = 'Search';
         const r = S.results;
         count = r ? `${r.length} result${r.length === 1 ? '' : 's'}` : '';
-        empty = S.query ? `Nothing matches “${esc(S.query)}”.` : 'Type to search this mailbox.';
+        empty = `Nothing matches “${esc(S.query)}”.`;
         rows = (r || []).map((x) => `
             <div class="mrow ${x.id === S.sel ? 'active' : ''}" data-result="${esc(x.id)}">
                 <div class="l1"><span class="dot"></span><span class="top">${esc(splitFrom(x.from).name)}</span><span class="time">${rel(x.timestamp)}</span></div>
@@ -724,7 +729,7 @@ function renderList(adminList, searching) {
             <div class="mrow ${e.isNew ? 'new' : ''} ${e.id === S.sel ? 'active' : ''}" data-email="${esc(e.id)}">
                 <div class="l1"><span class="dot"></span><span class="top">${esc(splitFrom(e.from).name)}</span><span class="time">${rel(e.timestamp)}</span></div>
                 <div class="l2"><span class="sub">${esc(e.subject || '(no subject)')}</span>${n ? `<span class="tag">${n} file${n === 1 ? '' : 's'}</span>` : ''}</div>
-                <div class="pre">${esc(plain(e).slice(0, 160))}</div>
+                <div class="pre">${esc(preview(e))}</div>
             </div>`;
         }).join('');
     }
@@ -741,7 +746,7 @@ function renderReader(e, adminList) {
         renderedEmailId = null;
         let title = 'Select an email to read it', text = 'Messages open here. New mail is pushed over a live connection, so there is no need to refresh.', swaks = '';
         if (adminList) { title = 'Pick an inbox'; text = 'As an admin you can open any inbox, including password-protected ones.'; }
-        else if (S.address && !S.loading && !S.emails.length && S.view !== 'search') {
+        else if (S.address && !S.loading && !S.emails.length && !S.query) {
             title = 'This inbox is empty';
             text = `Send something to ${S.address} and it will show up straight away. To test from a terminal:`;
             swaks = `swaks --to ${S.address} \\\n      --server ${S.domain || location.hostname}:25 \\\n      --body "Hello from temporary mail!"`;
