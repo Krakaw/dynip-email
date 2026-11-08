@@ -13,7 +13,7 @@ const S = {
     view: 'inbox', emails: [], sel: null, results: null, query: '',
     webhooks: [], editingHook: null,
     adminInboxes: [], adminTotal: 0,
-    modal: null, pending: '', connected: false, loading: false,
+    modal: null, pending: '', connected: false, loading: false, opening: false,
 };
 
 // ---------------------------------------------------------------- helpers
@@ -212,20 +212,23 @@ async function openMailbox(raw) {
     const address = normalize(raw);
     if (!address) return;
     closeDrawer();
-    let locked = false;
+    S.opening = true; // keeps the landing view hidden while a ?mailbox= link resolves
     try {
-        locked = !!(await apiJson(`/api/mailbox/${enc(address)}/status`)).is_locked;
+        const locked = !!(await apiJson(`/api/mailbox/${enc(address)}/status`)).is_locked;
+        const pw = storedPw(address);
+        if (!locked) loadMailbox(address, '', false);
+        else if (pw && (await api(`/api/emails/${enc(address)}?password=${enc(pw)}`)).ok) loadMailbox(address, pw, true);
+        else {
+            clearPw(address);
+            S.pending = address;
+            openModal('unlock');
+        }
     } catch (e) {
-        return toast(e.message);
+        toast(e.message);
+    } finally {
+        S.opening = false;
+        render();
     }
-    const pw = storedPw(address);
-    if (locked) {
-        if (pw && (await api(`/api/emails/${enc(address)}?password=${enc(pw)}`)).ok) return loadMailbox(address, pw, true);
-        clearPw(address);
-        S.pending = address;
-        return openModal('unlock');
-    }
-    loadMailbox(address, '', false);
 }
 
 async function loadMailbox(address, password, claimed) {
@@ -676,7 +679,7 @@ function render() {
     $('mobileTitle').textContent = has ? S.address : adminList ? 'All inboxes' : 'dyn-ip email';
 
     // Main panes
-    const showEmpty = !has && !adminList;
+    const showEmpty = !has && !adminList && !S.opening;
     $('emptyView').hidden = !showEmpty;
     $('hooksView').hidden = !hooks;
     $('listPane').hidden = $('readerPane').hidden = showEmpty || hooks;
@@ -727,7 +730,7 @@ function renderList(adminList, searching, inbox) {
             </div>`).join('');
     } else {
         count = `${S.emails.length} email${S.emails.length === 1 ? '' : 's'}`;
-        empty = S.loading ? 'Loading…' : 'No mail yet. It will appear here as soon as it arrives.';
+        empty = S.loading || S.opening ? 'Loading…' : 'No mail yet. It will appear here as soon as it arrives.';
         rows = S.emails.map((e) => {
             const n = e.attachments?.length || 0;
             return `
@@ -899,8 +902,8 @@ function loadFromUrl() {
 (async () => {
     bind();
     await initAuth();
-    render();
     if (needsLogin()) openModal(S.registrationOpen ? 'register' : 'login');
-    else loadFromUrl();
+    else loadFromUrl(); // sets S.opening synchronously, so the render below skips the landing view
+    render();
     if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
 })();
