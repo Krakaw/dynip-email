@@ -316,6 +316,7 @@ pub async fn status(
         "has_users": has_users,
         "registration_open": config.enabled && !has_users,
         "domain_restricted": config.auth_domains.is_some(),
+        "auth_domains": config.auth_domains,
         "outbound_enabled": config.outbound_enabled
     })))
 }

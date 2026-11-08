@@ -1,96 +1,257 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Temporary Mail Server</title>
-    <link rel="icon" type="image/svg+xml" href="/logo.svg">
-    <link rel="stylesheet" href="/style.css?v=3">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dyn-ip email · Disposable inboxes on your own domain</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css?v=4">
 </head>
-<body>
-    <div class="container">
-        <header>
-            <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
-                <span id="themeIcon">🌙</span>
-            </button>
-            <h1><svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="250 170 540 680" version="1.1">
-                <path d="M 420.184 179.035 C 411.980 180.714, 404.440 187.298, 399.365 197.214 C 397.877 200.121, 388.298 227.700, 378.080 258.500 L 359.500 314.500 348.500 316.827 C 319.869 322.885, 280.125 334.518, 267.372 340.573 C 259.902 344.120, 254 349.641, 254 353.083 C 254 357.893, 262.340 362.479, 279.159 366.918 C 312.625 375.750, 365.666 382.604, 431 386.539 C 479.018 389.432, 557.217 389.201, 607.500 386.018 C 671.478 381.968, 738.442 371.498, 760.112 362.155 C 765.114 359.999, 770.017 355.500, 769.965 353.114 C 769.805 345.826, 758.280 339.378, 730.375 330.962 C 711.875 325.383, 687.259 319.060, 673.961 316.472 L 665.423 314.810 647.609 261.155 C 637.811 231.645, 628.068 203.869, 625.957 199.432 C 617.930 182.559, 607.463 176.577, 590.172 178.982 C 586.131 179.544, 573.194 182.250, 561.423 184.995 C 515.805 195.633, 508.156 195.746, 469 186.352 C 438.991 179.152, 427.801 177.475, 420.184 179.035 M 344.090 404.902 C 342.765 405.257, 340.740 406.811, 339.590 408.355 C 337.741 410.839, 337.514 412.449, 337.625 422.331 C 338.238 477.001, 372.701 523.485, 418.548 531.480 C 443.266 535.791, 461.424 530.440, 484.623 512.009 C 489.505 508.130, 496.740 503.334, 500.701 501.350 C 506.933 498.230, 508.618 497.804, 513.217 498.185 C 519.756 498.727, 525.886 501.709, 534.726 508.647 C 548.920 519.789, 558.662 525.633, 568.718 529.041 C 577.961 532.173, 579.272 532.355, 592.500 532.348 C 604.816 532.340, 607.559 532.017, 615.307 529.657 C 630.583 525.006, 642.076 518.073, 653.194 506.802 C 673.302 486.417, 684.377 459.910, 686.537 427 C 687.698 409.311, 685.200 404.731, 674.461 404.859 C 664.970 404.973, 615.393 409.967, 597.500 412.612 C 588.150 413.995, 569.097 417.379, 555.159 420.134 C 513.491 428.368, 509.471 428.413, 475.911 421.019 C 443.693 413.922, 422.120 410.846, 378 407.060 C 365.075 405.951, 352.700 404.866, 350.500 404.650 C 348.300 404.433, 345.416 404.546, 344.090 404.902 M 390.108 445.834 C 388.039 447.260, 389.212 454.865, 392.561 461.735 C 395.822 468.424, 404.747 477.810, 410.765 480.880 C 424.476 487.875, 447.751 487.721, 461.921 480.540 C 467.247 477.841, 471 473.821, 471 470.815 C 471 462.206, 455.550 451.905, 436.500 447.814 C 426.294 445.623, 392.506 444.180, 390.108 445.834 M 598.500 446.156 C 582.201 447.979, 568.734 452.961, 560.489 460.218 C 549.295 470.072, 551.733 477.213, 568.273 483.017 C 576.141 485.778, 592.384 486.775, 601.213 485.038 C 614.265 482.470, 625.419 473.883, 631.506 461.714 C 635.392 453.947, 636.253 446.695, 633.418 445.607 C 631.149 444.736, 607.934 445.101, 598.500 446.156 M 324.063 567.186 C 316.713 570.016, 309.925 576.912, 307.126 584.393 L 304.965 590.168 305.233 697.834 L 305.500 805.500 308.290 811.182 C 311.542 817.803, 316.341 822.351, 323.567 825.659 L 328.726 828.021 513.113 827.761 L 697.500 827.500 702.859 824.532 C 709.547 820.827, 714.385 815.259, 717.009 808.245 C 719.004 802.915, 719.031 801.172, 718.767 695.166 L 718.500 587.500 715.710 581.818 C 712.685 575.659, 708.344 571.295, 701.722 567.756 L 697.500 565.500 513.500 565.297 L 329.500 565.093 324.063 567.186 M 333.048 605.628 L 333.095 614.500 349.738 627.500 C 358.891 634.650, 378.372 649.763, 393.028 661.086 L 419.675 681.671 421.166 675.586 C 421.986 672.238, 422.846 668.876, 423.078 668.113 C 423.554 666.547, 390.979 640.259, 357 614.788 C 345.175 605.924, 334.938 598.240, 334.250 597.713 C 333.271 596.963, 333.010 598.680, 333.048 605.628 M 673 610.300 C 663.375 617.568, 642.972 633.588, 627.661 645.900 C 601.868 666.641, 599.864 668.478, 600.405 670.893 C 600.725 672.327, 601.278 675.638, 601.633 678.250 C 601.988 680.862, 602.474 683, 602.713 683 C 603.603 683, 641.008 654.018, 680.599 622.654 L 690.890 614.500 690.945 605.750 C 690.975 600.938, 690.888 597.019, 690.750 597.043 C 690.612 597.066, 682.625 603.032, 673 610.300 M 497 615.496 C 466.567 621.621, 443.044 645.147, 433.790 678.716 C 430.844 689.400, 430.633 713.290, 433.398 723 C 436.060 732.349, 442.122 744.449, 448.075 752.298 C 470.307 781.608, 515.379 791.118, 552.228 774.274 C 556.503 772.320, 560 770.401, 560 770.010 C 560 769.480, 552.773 759.356, 549.359 755.104 C 549.185 754.886, 546.419 755.885, 543.213 757.324 C 530.233 763.149, 510.845 764.926, 497.500 761.514 C 475.715 755.944, 458.630 739.925, 453.579 720.334 C 449.948 706.253, 450.594 691.721, 455.473 677.689 C 464.543 651.610, 485.910 636.784, 514.500 636.732 C 531.823 636.700, 544.474 641.344, 554.627 651.462 C 564.587 661.389, 570 674.930, 570 689.920 C 570 710.967, 556.984 731.481, 547.168 725.904 C 542.412 723.201, 542.395 722.891, 545.400 692.800 C 546.955 677.235, 548.427 664.163, 548.673 663.750 C 548.918 663.337, 545.041 663, 540.059 663 L 531 663 530.996 667.250 L 530.993 671.500 529.095 668.389 C 522.055 656.844, 502.330 654.831, 488.443 664.241 C 472.486 675.053, 466.316 703.994, 475.727 723.888 C 480.894 734.810, 490.128 740.988, 502.475 741.780 C 512.651 742.433, 519.698 740.214, 525.696 734.467 C 528.260 732.010, 530.448 730, 530.558 730 C 530.667 730, 531.315 731.345, 531.996 732.989 C 533.779 737.295, 540.267 742.772, 544.532 743.572 C 556.101 745.742, 568.677 739.755, 576.752 728.232 C 592.951 705.119, 593.795 670.412, 578.720 647.286 C 567.782 630.506, 550.830 619.378, 530.162 615.409 C 521.209 613.690, 505.773 613.730, 497 615.496 M 503.145 678.016 C 498.302 680.067, 494.870 683.324, 492.386 688.225 C 486.315 700.206, 489.146 714.104, 499.024 720.814 C 501.969 722.814, 503.449 723.117, 508.713 722.793 C 516.536 722.311, 521.247 718.899, 525.360 710.737 C 530.690 700.159, 528.416 686.470, 520.300 680.280 C 516.442 677.337, 507.526 676.161, 503.145 678.016" fill="currentColor" fill-rule="evenodd"/>
-              </svg>dyn-ip email</h1>
-            <p class="subtitle">View emails sent to any address - no registration required</p>
-        </header>
+<body class="landing">
+<header class="l-header">
+  <div class="wrap">
+    <a href="#top" class="brand"><span class="logo"></span>dyn-ip email</a>
+    <nav class="l-nav">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#self-host">Self-host</a>
+      <a href="#developers">Developers</a>
+      <a href="https://github.com/Krakaw/dynip-email">GitHub</a>
+      <a href="/app/" class="btn primary">Open an inbox</a>
+    </nav>
+  </div>
+</header>
 
-        <div class="email-input-section">
-            <input 
-                type="text" 
-                id="emailAddress" 
-                placeholder="Enter address"
-                autocomplete="off"
-                data-lpignore="true"
-                data-1p-ignore="true"
-                data-form-type="other"
-                spellcheck="false"
-                autofocus
-            >
-            <button id="loadEmails">Load Inbox</button>
-            <button id="composeBtn" class="compose-btn" style="display: none;">Compose</button>
+<main id="top">
+  <section>
+    <div class="wrap hero">
+      <div class="hero-copy">
+        <div class="pills"><span>Open source · MIT</span><span>Written in Rust</span></div>
+        <h1>Disposable inboxes on a domain you control.</h1>
+        <p class="lede">dyn-ip email is a lightweight mail server that accepts mail to any address and shows it in the browser the moment it lands. No registration. Type a name and read.</p>
+        <form class="hero-form" id="heroForm">
+          <div class="addr-field">
+            <input id="local" placeholder="anything" spellcheck="false" autocomplete="off" aria-label="Mailbox name">
+            <span>@<span class="domain">dynip.local</span></span>
+          </div>
+          <div class="btns">
+            <button class="btn primary xl" type="submit">Open inbox</button>
+            <button class="btn xl" type="button" id="random">Generate random address</button>
+          </div>
+          <small>Running your own server? <a href="#self-host">Deploy it in one command.</a></small>
+        </form>
+      </div>
+
+      <div class="preview" aria-hidden="true">
+        <div class="pbar">
+          <span class="mono">quiet-otter-4821@<span class="domain">dynip.local</span></span>
+          <span class="badge ok"><span class="dot"></span>Live</span>
         </div>
-
-        <div class="status-bar">
-            <div id="connectionStatus" class="status-indicator offline">
-                <span class="status-dot"></span>
-                <span class="status-text">Disconnected</span>
+        <div class="pgrid">
+          <div class="plist">
+            <div class="prow on"><div class="l1"><span class="dot"></span><b>Larkspur</b><small>Just now</small></div><div class="l2">Your sign-in code is 482 913</div></div>
+            <div class="prow"><div class="l1"><span class="dot"></span><b>build-bot</b><small>38 min</small></div><div class="l2">Pipeline #1842 passed on main</div></div>
+            <div class="prow"><div class="l1"><span class="dot"></span><b>Hollis Park</b><small>3 h</small></div><div class="l2">Confirm your address to finish signing up</div></div>
+            <div class="prow"><div class="l1"><span class="dot"></span><b>Larkspur Billing</b><small>Yesterday</small></div><div class="l2">Invoice INV-2026-0117</div></div>
+          </div>
+          <div class="pread">
+            <div class="subj">Your sign-in code is 482 913</div>
+            <div class="meta">
+              <span>From</span><span>no-reply@larkspur.app</span>
+              <span>To</span><span class="mono" style="font-size:11px">quiet-otter-4821@<span class="domain">dynip.local</span></span>
             </div>
-            <button id="lockMailbox" class="lock-btn" style="display: none;"></button>
-            <div id="emailCount" class="email-count">0 emails</div>
+            <div style="line-height:1.6">Use this code to finish signing in to Larkspur:</div>
+            <div class="code">482 913</div>
+            <div class="muted" style="line-height:1.6">The code expires in 10 minutes.</div>
+          </div>
         </div>
-
-        <div class="main-content">
-            <div class="email-list-panel">
-                <div class="panel-header">
-                    <h2>Inbox</h2>
-                    <div class="tab-buttons">
-                        <button id="inboxTab" class="tab-button active">Emails</button>
-                        <button id="searchTab" class="tab-button">Search</button>
-                        <button id="webhooksTab" class="tab-button">Webhooks</button>
-                    </div>
-                </div>
-                <div id="searchBox" class="search-box" style="display: none;">
-                    <input 
-                        type="text" 
-                        id="searchQuery" 
-                        placeholder="Search emails..."
-                        autocomplete="off"
-                    >
-                    <button id="searchBtn" class="btn-primary">Search</button>
-                </div>
-                <div id="emailList" class="email-list">
-                    <div class="empty-state">
-                        <p>👋 Enter an email address to view messages</p>
-                    </div>
-                </div>
-                <div id="searchResults" class="email-list" style="display: none;">
-                    <div class="empty-state">
-                        <p>🔍 Enter a search query to find emails</p>
-                    </div>
-                </div>
-                <div id="webhookList" class="webhook-list" style="display: none;">
-                    <div class="empty-state">
-                        <p>🔗 No webhooks configured for this mailbox</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="email-detail-panel">
-                <div id="emailDetail" class="email-detail">
-                    <div class="empty-state">
-                        <p>📬 Select an email to view its contents</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+      </div>
     </div>
+  </section>
 
-    <script src="/app.js?v=5"></script>
+  <section id="how">
+    <div class="wrap flow">
+      <div class="sec-head">
+        <h2 class="h">How it works</h2>
+        <p>Point a domain at the server and every address on it becomes a working inbox.</p>
+      </div>
+      <div class="grid steps">
+        <div><span class="num">01</span><b>Mail goes to any address</b><div class="d">The SMTP server accepts every recipient with no validation. Plain SMTP is always on; STARTTLS on 587 and SMTPS on 465 when SSL is enabled.</div><code>MX 10 mail.yourdomain.com</code></div>
+        <div><span class="num">02</span><b>You open it in the browser</b><div class="d">Enter the address and the inbox loads. A WebSocket pushes new messages and deletions in real time, so the page never needs a refresh.</div><code>WS /api/ws/:address</code></div>
+        <div><span class="num">03</span><b>Your tools read it too</b><div class="d">Webhooks, IMAP and an MCP server give test suites, mail clients and AI assistants access to the same mailbox.</div><code>POST /api/webhooks</code></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap flow">
+      <h2 class="h">Features</h2>
+      <div class="grid feats">
+        <div><b>Accepts all mail</b><div class="d">Any recipient on your domain is accepted. Optionally reject mail not addressed to DOMAIN_NAME.</div></div>
+        <div><b>Real-time inbox</b><div class="d">New mail and retention deletions arrive over a WebSocket. The tab’s icon changes when something is unread.</div></div>
+        <div><b>Claim with a password</b><div class="d">The first person to claim an address can lock it. Release it later to make it public again.</div></div>
+        <div><b>Webhooks</b><div class="d">Per-mailbox POSTs on arrival and deletion, with a test button to check delivery.</div></div>
+        <div><b>IMAP access</b><div class="d">Read a claimed mailbox from any mail client using its address and password.</div></div>
+        <div><b>MCP server</b><div class="d">AI assistants can list, read and delete mail and manage webhooks over the Model Context Protocol.</div></div>
+        <div><b>Full-text search</b><div class="d">Search subject, sender and body within a mailbox, with matches highlighted.</div></div>
+        <div><b>Auto-cleanup</b><div class="d">Set EMAIL_RETENTION_HOURS and old mail is deleted on schedule.</div></div>
+        <div><b>Accounts and admin</b><div class="d">Optional sign-in, restricted to your domains. Admins can list and open every inbox.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="self-host" class="alt">
+    <div class="wrap split">
+      <div class="col">
+        <h2 class="h">Self-host it</h2>
+        <p>One binary and a SQLite file. Run the published container or build from source with Rust. The web interface starts on port 3000 and SMTP on 2525.</p>
+        <ol class="steps">
+          <li><span class="n">1</span><span>Set <code class="ic">DOMAIN_NAME</code> in <code class="ic">.env</code>.</span></li>
+          <li><span class="n">2</span><span>Start the server with Docker Compose or Cargo.</span></li>
+          <li><span class="n">3</span><span>Add MX, A and PTR records for your domain. SPF, DKIM and DMARC help deliverability.</span></li>
+        </ol>
+        <div class="note">Most ISPs block port 25 on residential connections. Use a VPS or dedicated server to receive mail from the internet.</div>
+      </div>
+      <div class="col r">
+        <div class="panel">
+          <div class="tabs" data-tabs="install">
+            <button data-key="docker" class="active">Docker Compose</button>
+            <button data-key="cargo">Cargo</button>
+          </div>
+          <pre id="installCode"></pre>
+        </div>
+        <div class="panel">
+          <table>
+            <thead><tr><th>Variable</th><th>Default</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">DOMAIN_NAME</td><td class="mono">tempmail.local</td><td>Domain for the SMTP greeting</td></tr>
+              <tr><td class="mono">SMTP_PORT</td><td class="mono">2525</td><td>Plain SMTP, always listening</td></tr>
+              <tr><td class="mono">API_PORT</td><td class="mono">3000</td><td>Web interface and API</td></tr>
+              <tr><td class="mono">SMTP_SSL_ENABLED</td><td class="mono">false</td><td>Let’s Encrypt TLS on 587 and 465</td></tr>
+              <tr><td class="mono">EMAIL_RETENTION_HOURS</td><td class="mono">—</td><td>Delete mail older than this</td></tr>
+              <tr><td class="mono">IMAP_ENABLED</td><td class="mono">false</td><td>IMAP server on IMAP_PORT (143)</td></tr>
+              <tr><td class="mono">AUTH_ENABLED</td><td class="mono">false</td><td>Require accounts to read mail</td></tr>
+            </tbody>
+          </table>
+          <div class="foot">The full list is in the <a href="https://github.com/Krakaw/dynip-email/blob/main/docs/CONFIGURATION.md">configuration guide</a>.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="developers">
+    <div class="wrap split dev">
+      <div class="col">
+        <h2 class="h">For developers</h2>
+        <p>Use a fresh address in every test run, then read the message over REST, wait for it on a WebSocket, or have it posted to you.</p>
+        <div class="panel">
+          <div class="ep"><b>GET</b><span>/api/emails/:address</span></div>
+          <div class="ep"><b>GET</b><span>/api/email/:id</span></div>
+          <div class="ep"><b>WS</b><span>/api/ws/:address</span></div>
+          <div class="ep"><b>POST</b><span>/api/webhooks</span></div>
+          <div class="ep"><b>GET</b><span>/api/webhooks/:address</span></div>
+          <div class="ep"><b>POST</b><span>/api/webhook/:id/test</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="tabs" data-tabs="dev">
+          <button data-key="rest" class="active">REST</button>
+          <button data-key="ws">WebSocket</button>
+          <button data-key="webhook">Webhook payload</button>
+          <button data-key="mcp">MCP</button>
+          <button data-key="imap">IMAP</button>
+        </div>
+        <div class="devnote" id="devNote"></div>
+        <pre class="alt" id="devCode"></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap cta">
+      <div class="sec-head">
+        <h2 class="h">Try an address now</h2>
+        <p>Open any inbox without signing up, or run your own server from GitHub.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="/app/" class="btn primary xl">Open an inbox</a>
+        <a href="https://github.com/Krakaw/dynip-email" class="btn xl">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="l-footer">
+  <div class="wrap">
+    <span class="brand"><span class="logo"></span>dyn-ip email · MIT License</span>
+    <nav>
+      <a href="https://github.com/Krakaw/dynip-email/tree/main/docs">Documentation</a>
+      <a href="https://github.com/Krakaw/dynip-email/blob/main/docs/DOCKER_DEPLOYMENT.md">Docker deployment</a>
+      <a href="https://github.com/Krakaw/dynip-email">GitHub</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+'use strict';
+// Mailbox links predate the landing page and pointed at /.
+if (new URLSearchParams(location.search).has('mailbox')) location.replace('/app/' + location.search);
+let domain = 'dynip.local';
+
+function randomLocal() {
+  const a = ['quiet', 'amber', 'brisk', 'lunar', 'mossy', 'spare', 'tidal', 'rusty', 'woven', 'polar'];
+  const n = ['otter', 'heron', 'finch', 'maple', 'cedar', 'comet', 'pike', 'wren', 'lynx', 'fern'];
+  const p = (x) => x[Math.floor(Math.random() * x.length)];
+  return p(a) + '-' + p(n) + '-' + (1000 + Math.floor(Math.random() * 9000));
+}
+
+function go(local) {
+  const v = local.trim();
+  location.href = '/app/?mailbox=' + encodeURIComponent(v); // the app appends the server's domain
+}
+
+const INSTALL = {
+  docker: '# docker-compose.yml ships with the repo\ngit clone https://github.com/Krakaw/dynip-email\ncd dynip-email\ncp env.example .env\n\ndocker compose up -d\n\n# Web   http://localhost:3000\n# SMTP  localhost:25 → 2525',
+  cargo: 'git clone https://github.com/Krakaw/dynip-email\ncd dynip-email\ncp env.example .env\n\ncargo run --release\n\n# Web   http://localhost:3000\n# SMTP  localhost:2525',
+};
+
+function dev(key) {
+  const addr = 'test@' + domain;
+  const base = location.origin;
+  return {
+    rest: ['List the mail for an address. Add ?password= for a claimed mailbox.', 'curl ' + base + '/api/emails/' + addr],
+    ws: ['Open a socket and receive each new email as JSON when it arrives.', "const ws = new WebSocket(\n  '" + base.replace(/^http/, 'ws') + '/api/ws/' + addr + "'\n);\n\nws.onmessage = (event) => {\n  const email = JSON.parse(event.data);\n  console.log('New email:', email);\n};"],
+    webhook: ['Each configured endpoint receives this payload.', JSON.stringify({ event: 'arrival', mailbox: addr, webhook_id: 'webhook-uuid', timestamp: '2024-01-01T00:00:00Z', email: { id: 'email-uuid', to: addr, from: 'sender@example.com', subject: 'Email Subject', body: 'Email content', timestamp: '2024-01-01T00:00:00Z', attachments: 0 } }, null, 2)],
+    mcp: ['Set MCP_ENABLED=true. Tools: list_emails, read_email, delete_email, create_webhook, list_webhooks, delete_webhook, test_webhook.', JSON.stringify({ tool: 'list_emails', arguments: { mailbox: addr } }, null, 2)],
+    imap: ['Set IMAP_ENABLED=true, claim the mailbox, then sign in with its address and password.', 'Server:    mail.' + domain + '\nPort:      143\nUsername:  test  (or ' + addr + ')\nPassword:  your mailbox password\nSecurity:  None, or STARTTLS when SSL is enabled'],
+  }[key];
+}
+
+const show = { install: (k) => { document.getElementById('installCode').textContent = INSTALL[k]; },
+  dev: (k) => { const [note, code] = dev(k); document.getElementById('devNote').textContent = note; document.getElementById('devCode').textContent = code; } };
+
+document.querySelectorAll('[data-tabs]').forEach((bar) => {
+  bar.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-key]');
+    if (!b) return;
+    bar.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+    show[bar.dataset.tabs](b.dataset.key);
+  });
+});
+
+function refresh() {
+  document.querySelectorAll('.domain').forEach((el) => { el.textContent = domain; });
+  show.install(document.querySelector('[data-tabs=install] .active').dataset.key);
+  show.dev(document.querySelector('[data-tabs=dev] .active').dataset.key);
+}
+
+document.getElementById('heroForm').addEventListener('submit', (e) => { e.preventDefault(); go(document.getElementById('local').value || randomLocal()); });
+document.getElementById('random').addEventListener('click', () => go(randomLocal()));
+refresh();
+fetch('/api/config').then((r) => r.json()).then((c) => { if (c.domain_name) { domain = c.domain_name; refresh(); } }).catch(() => {});
+</script>
 </body>
 </html>
-

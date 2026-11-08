@@ -48,6 +48,7 @@ pub fn create_router(
         domain_name: domain_name.clone(),
     };
 
+    let public_domain = domain_name.clone();
     let app_config = AppConfig { domain_name };
 
     // Create state for delete email route (storage + webhook_trigger)
@@ -163,16 +164,23 @@ pub fn create_router(
             auth::auth_config_middleware,
         ));
 
-    let mut router = Router::new()
-        .route("/api/health", get(|| async { "ok" }))
-        // WebSocket route (needs domain for normalization)
-        .route("/api/ws/:address", get(websocket_handler))
-        .with_state(ws_state)
-        // Merge auth routes (public)
-        .merge(auth_routes)
-        .merge(admin_routes)
-        // Merge protected routes
-        .merge(protected_routes);
+    let mut router =
+        Router::new()
+            .route("/api/health", get(|| async { "ok" }))
+            .route(
+                "/api/config",
+                get(move || async move {
+                    axum::Json(serde_json::json!({ "domain_name": public_domain }))
+                }),
+            )
+            // WebSocket route (needs domain for normalization)
+            .route("/api/ws/:address", get(websocket_handler))
+            .with_state(ws_state)
+            // Merge auth routes (public)
+            .merge(auth_routes)
+            .merge(admin_routes)
+            // Merge protected routes
+            .merge(protected_routes);
 
     // Merge outbound routes if available
     if let Some(outbound) = outbound_routes {

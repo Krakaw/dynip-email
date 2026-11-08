@@ -336,7 +336,8 @@ src/
 └── config.rs           # Configuration management
 
 static/                 # Frontend files
-├── index.html          # Web interface
+├── index.html          # Landing page
+├── app/index.html      # Web interface (mail app)
 ├── app.js              # JavaScript
 ├── style.css           # Styling
 └── logo.svg            # Logo

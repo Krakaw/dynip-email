@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dyn-ip email</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css?v=4">
+</head>
+<body class="app-page">
+<div class="app" id="app">
+  <div class="backdrop mobile-only" id="backdrop" hidden></div>
+
+  <aside class="side" id="side">
+    <div class="bar">
+      <a href="/" class="brand"><span class="logo"></span>dyn-ip email</a>
+      <button class="btn md mobile-only" id="closeDrawer" style="border:0;background:transparent">Close</button>
+    </div>
+
+    <div class="side-sec">
+      <label class="label" for="openInput">Open a mailbox</label>
+      <div class="row">
+        <input class="input" id="openInput" placeholder="name or full address" spellcheck="false" autocomplete="off" data-lpignore="true" data-1p-ignore>
+        <button class="btn primary md" id="openBtn" style="height:32px">Open</button>
+      </div>
+      <button class="link" id="randomBtn" style="align-self:flex-start;height:24px">Generate a random address</button>
+    </div>
+
+    <div class="side-sec" id="currentBox" hidden>
+      <div class="row">
+        <span class="label">Current mailbox</span>
+        <button class="btn sm" id="copyBtn">Copy</button>
+      </div>
+      <div id="addr"></div>
+      <div class="row">
+        <span class="badge" id="lockBadge"></span>
+        <button class="link" id="claimBtn"></button>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav"></nav>
+
+    <div class="side-foot">
+      <button class="btn primary" id="composeBtn" hidden>Compose</button>
+      <div class="user" id="userBox" hidden>
+        <div><div id="userEmail"></div><div id="userRole"></div></div>
+        <button class="btn sm" id="logoutBtn">Log out</button>
+      </div>
+      <button class="btn" id="loginBtn" hidden>Log in</button>
+      <a href="/" class="about">About dyn-ip email</a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="bar mobile-head mobile-only">
+      <button class="btn" id="menuBtn">Menu</button>
+      <div id="mobileTitle">dyn-ip email</div>
+      <button class="btn primary" id="composeBtnM" hidden>Compose</button>
+    </header>
+    <div class="tabs mobile-only" id="tabs" hidden></div>
+
+    <div class="content">
+      <!-- No mailbox open -->
+      <div class="center" id="emptyView">
+        <div class="stack">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <h1>Open a mailbox</h1>
+            <p>Every address at <span class="domain">this domain</span> accepts mail. Type a name to read its inbox. There is nothing to sign up for, and new mail appears here as it arrives.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div class="addr-field">
+              <input id="localInput" placeholder="anything" spellcheck="false" autocomplete="off" aria-label="Mailbox name" data-lpignore="true" data-1p-ignore>
+              <span>@<span class="domain">domain</span></span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn primary lg" id="localBtn">Open inbox</button>
+              <button class="btn lg" id="randomBtn2">Generate random address</button>
+            </div>
+          </div>
+          <div class="boxlist" id="recents" hidden>
+            <div class="head">Recently opened on this device</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inbox / search / admin list + reader -->
+      <section class="list" id="listPane" hidden>
+        <div class="bar">
+          <div class="title"><strong id="listTitle">Inbox</strong><span id="listCount"></span></div>
+          <span class="badge ok" id="liveBadge" hidden><span class="dot"></span><span id="liveText">Live</span></span>
+        </div>
+        <div class="banner" id="adminBanner" hidden>
+          <span>Admin view. Mailbox password bypassed.</span>
+          <button id="backToAdmin">All inboxes</button>
+        </div>
+        <form class="search" id="searchBox" hidden>
+          <input class="input" id="searchInput" type="search" placeholder="Search subject, sender and body" autocomplete="off">
+          <span>Full-text search across subject, sender and body. Press Enter to search.</span>
+        </form>
+        <div class="rows" id="rows"></div>
+      </section>
+
+      <section class="reader" id="readerPane" hidden>
+        <div id="readerSel" hidden style="display:contents">
+          <div class="bar">
+            <button class="btn md mobile-only" id="backBtn">Back</button>
+            <span style="flex:1"></span>
+            <button class="btn md" id="replyBtn" hidden>Reply</button>
+            <button class="btn md danger" id="deleteBtn">Delete</button>
+          </div>
+          <div class="scroll">
+            <article>
+              <h1 id="rSubject"></h1>
+              <div class="meta">
+                <span>From</span><span id="rFrom"></span>
+                <span>To</span><span class="mono" id="rTo" style="font-size:12.5px"></span>
+                <span>Date</span><span id="rDate" style="font-variant-numeric:tabular-nums"></span>
+              </div>
+              <div id="rBody"></div>
+              <div class="atts" id="rAtts" hidden>
+                <span class="label" id="rAttLabel"></span>
+                <div class="box" id="rAttList"></div>
+              </div>
+            </article>
+          </div>
+        </div>
+        <div class="reader-empty" id="readerEmpty">
+          <div>
+            <strong id="reTitle">Select an email to read it</strong>
+            <div class="muted" id="reText">Messages open here. New mail is pushed over a live connection, so there is no need to refresh.</div>
+            <pre class="code" id="swaks" hidden></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Webhooks -->
+      <section class="reader" id="hooksView" hidden>
+        <div class="bar">
+          <div class="title"><strong>Webhooks</strong><span id="hookCount"></span></div>
+          <button class="btn md primary" id="addHookBtn">Add webhook</button>
+        </div>
+        <div class="scroll">
+          <div class="hooks-wrap">
+            <p>Each endpoint receives a JSON POST when mail for <span class="mono" id="hookAddr" style="font-size:13px;color:var(--ink);word-break:break-all"></span> arrives or is deleted.</p>
+            <form class="card hook-form" id="hookForm" hidden>
+              <strong id="hookFormTitle">New webhook</strong>
+              <label class="field" style="max-width:520px">
+                <span>Endpoint URL</span>
+                <input class="input mono" type="url" id="hookUrl" placeholder="https://example.com/hooks/mail" required>
+                <span class="help">Must accept POST requests with a JSON body.</span>
+              </label>
+              <div class="field">
+                <span>Events</span>
+                <label class="check"><input type="checkbox" name="ev" value="arrival" checked><span>Arrival<small>A new email is received.</small></span></label>
+                <label class="check"><input type="checkbox" name="ev" value="deletion"><span>Deletion<small>An email is deleted, including by the retention policy.</small></span></label>
+              </div>
+              <div class="error" id="hookErr" hidden></div>
+              <div style="display:flex;gap:8px">
+                <button class="btn primary" type="submit">Save webhook</button>
+                <button class="btn" type="button" id="hookCancel">Cancel</button>
+              </div>
+            </form>
+            <div class="card" id="hookList"></div>
+            <details class="card">
+              <summary><span><b>Example payload</b> · arrival</span><span>›</span></summary>
+              <pre class="code" id="payload"></pre>
+            </details>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<dialog id="modal">
+  <form method="dialog" id="modalForm" novalidate>
+    <div>
+      <h2 id="mTitle"></h2>
+      <p id="mDesc"></p>
+    </div>
+    <label class="field" id="fEmail" hidden><span>Email</span><input class="input" type="email" id="mEmail" autocomplete="username"></label>
+    <label class="field" id="fPw" hidden><span>Password</span><input class="input" type="password" id="mPw"></label>
+    <label class="field" id="fPw2" hidden><span>Confirm password</span><input class="input" type="password" id="mPw2"><span class="help" id="pwHelp"></span></label>
+    <div id="fCompose" hidden style="display:contents">
+      <div class="compose-grid">
+        <span>From</span><span class="from" id="cFrom"></span>
+        <label for="cTo">To</label><input class="input" type="email" id="cTo" placeholder="recipient@example.com">
+        <label for="cSubj">Subject</label><input class="input" id="cSubj">
+      </div>
+      <textarea id="cBody" placeholder="Write a message" aria-label="Message"></textarea>
+    </div>
+    <div class="error" id="mErr" hidden></div>
+    <div class="actions">
+      <div class="switch">
+        <span id="toRegister" hidden>No account? <button type="button" id="toRegisterBtn">Register</button></span>
+        <span id="toLogin" hidden>Have an account? <button type="button" id="toLoginBtn">Log in</button></span>
+      </div>
+      <div class="btns">
+        <button class="btn" type="button" id="mCancel"></button>
+        <button class="btn primary" type="submit" id="mOk"></button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button class="btn sm" id="toastClose">Dismiss</button></div>
+
+<script src="/app.js?v=6"></script>
+</body>
+</html>
