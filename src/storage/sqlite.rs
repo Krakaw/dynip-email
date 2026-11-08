@@ -1022,7 +1022,7 @@ impl StorageBackend for SqliteBackend {
                     e.from_address,
                     e.subject,
                     e.timestamp,
-                    snippet(emails_fts, 3, '<mark>', '</mark>', '...', 64) as snippet,
+                    snippet(emails_fts, 4, '<mark>', '</mark>', '...', 64) as snippet,
                     rank
                 FROM emails_fts
                 JOIN emails e ON emails_fts.rowid = e.rowid
@@ -1040,7 +1040,7 @@ impl StorageBackend for SqliteBackend {
                     e.from_address,
                     e.subject,
                     e.timestamp,
-                    snippet(emails_fts, 3, '<mark>', '</mark>', '...', 64) as snippet,
+                    snippet(emails_fts, 4, '<mark>', '</mark>', '...', 64) as snippet,
                     rank
                 FROM emails_fts
                 JOIN emails e ON emails_fts.rowid = e.rowid

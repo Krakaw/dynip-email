@@ -72,14 +72,19 @@ function plain(e) {
     return e._plain;
 }
 
-// HTML mail often opens with a preheader or heading that restates the subject.
-function preview(e) {
-    const t = plain(e), sub = (e.subject || '').trim();
-    return (sub && t.toLowerCase().startsWith(sub.toLowerCase()) ? t.slice(sub.length).replace(/^[\s:|–—-]+/, '') : t).slice(0, 160);
+// HTML mail often opens with a preheader and/or heading that restates the subject.
+function dropSubject(t, subject) {
+    const sub = (subject || '').trim().toLowerCase();
+    while (sub && t.toLowerCase().startsWith(sub)) t = t.slice(sub.length).replace(/^[\s:|–—-]+/, '');
+    return t;
 }
+const preview = (e) => dropSubject(plain(e), e.subject).slice(0, 160);
 
-// FTS snippets are raw body text wrapped in <mark>; escape everything else.
-const safeSnippet = (s) => esc(s).replace(/&lt;(\/?)mark&gt;/g, '<$1mark>');
+// FTS snippets are raw (often HTML) body text with <mark> around hits: drop other tags, escape the rest.
+const safeSnippet = (x) => {
+    const t = (x.snippet || '').replace(/<(head|style|script)\b[\s\S]*?<\/\1>/gi, ' ').replace(/<(?!\/?mark>)[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return esc(dropSubject(t, x.subject)).replace(/&lt;(\/?)mark&gt;/g, '<$1mark>');
+};
 
 let toastTimer;
 function toast(msg) {
@@ -718,7 +723,7 @@ function renderList(adminList, searching, inbox) {
             <div class="mrow ${x.id === S.sel ? 'active' : ''}" data-result="${esc(x.id)}">
                 <div class="l1"><span class="dot"></span><span class="top">${esc(splitFrom(x.from).name)}</span><span class="time">${rel(x.timestamp)}</span></div>
                 <div class="l2"><span class="sub">${esc(x.subject)}</span></div>
-                <div class="pre">${safeSnippet(x.snippet)}</div>
+                <div class="pre">${safeSnippet(x)}</div>
             </div>`).join('');
     } else {
         count = `${S.emails.length} email${S.emails.length === 1 ? '' : 's'}`;
