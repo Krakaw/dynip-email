@@ -8,8 +8,48 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::info;
 
+use crate::auth::AuthenticatedUser;
 use crate::rate_limit::RateLimit;
 use crate::storage::StorageBackend;
+
+fn require_admin(user: &AuthenticatedUser) -> Result<(), (StatusCode, String)> {
+    if user.is_admin {
+        Ok(())
+    } else {
+        Err((StatusCode::FORBIDDEN, "Admin access required".to_string()))
+    }
+}
+
+/// List all inboxes that have received email
+pub async fn list_inboxes(
+    State(storage): State<Arc<dyn StorageBackend>>,
+    user: AuthenticatedUser,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    require_admin(&user)?;
+    let inboxes = storage
+        .list_inboxes()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(json!({ "inboxes": inboxes })))
+}
+
+/// Get every email for an inbox, bypassing mailbox passwords
+pub async fn get_inbox_emails(
+    Path(address): Path<String>,
+    State(storage): State<Arc<dyn StorageBackend>>,
+    user: AuthenticatedUser,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    require_admin(&user)?;
+    info!(
+        "Admin {} read mailbox {} (password bypass)",
+        user.email, address
+    );
+    let emails = storage
+        .get_emails_for_address(&address)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(json!({ "emails": emails })))
+}
 
 /// Request to create or update a rate limit
 #[derive(Debug, Deserialize)]
@@ -321,5 +361,75 @@ mod tests {
         let get_result = get_rate_limit(Path(address), State(storage)).await;
         let json = get_result.unwrap().0;
         assert_eq!(json["requests_per_hour"], 100); // Default
+    }
+
+    #[tokio::test]
+    async fn test_admin_inboxes_require_admin() {
+        use crate::storage::models::Email;
+
+        let storage = create_test_storage().await;
+        storage
+            .store_email(Email::new(
+                "box@example.com".into(),
+                "s@x.com".into(),
+                "hi".into(),
+                "body".into(),
+                None,
+                vec![],
+            ))
+            .await
+            .unwrap();
+
+        let as_user = |is_admin| AuthenticatedUser {
+            user_id: "id".into(),
+            email: "u@example.com".into(),
+            is_admin,
+        };
+
+        let denied = list_inboxes(State(storage.clone()), as_user(false)).await;
+        assert_eq!(denied.unwrap_err().0, StatusCode::FORBIDDEN);
+        let denied = get_inbox_emails(
+            Path("box@example.com".into()),
+            State(storage.clone()),
+            as_user(false),
+        )
+        .await;
+        assert_eq!(denied.unwrap_err().0, StatusCode::FORBIDDEN);
+
+        let inboxes = list_inboxes(State(storage.clone()), as_user(true))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(inboxes["inboxes"][0]["address"], "box@example.com");
+        assert_eq!(inboxes["inboxes"][0]["email_count"], 1);
+
+        let emails = get_inbox_emails(
+            Path("box@example.com".into()),
+            State(storage),
+            as_user(true),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_eq!(emails["emails"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_is_admin_matches_config_case_insensitively() {
+        let config = crate::auth::AuthConfig {
+            enabled: true,
+            jwt_secret: "s".into(),
+            jwt_expiry_hours: 1,
+            auth_domains: None,
+            admin_emails: vec!["boss@example.com".into()],
+            outbound_enabled: false,
+        };
+        assert!(config.is_admin("Boss@Example.com"));
+        assert!(!config.is_admin("other@example.com"));
+        let disabled = crate::auth::AuthConfig {
+            enabled: false,
+            ..config
+        };
+        assert!(!disabled.is_admin("boss@example.com"));
     }
 }

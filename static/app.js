@@ -214,6 +214,7 @@ function updateAuthUI() {
     if (currentUser) {
         authStatus.innerHTML = `
             <span class="user-info">👤 ${escapeHtml(currentUser.email)}</span>
+            ${currentUser.is_admin ? '<button class="btn-secondary btn-small" onclick="showAdminInboxes()">Admin</button>' : ''}
             <button class="btn-secondary btn-small" onclick="logout()">Logout</button>
         `;
     } else {
@@ -891,6 +892,59 @@ function showEmailDetail(emailId) {
         email.isNew = false;
         displayEmails(emails);
         updateFavicon(); // Update favicon when email is marked as read
+    }
+}
+
+// Admin: list every inbox; opening one bypasses mailbox passwords server-side
+async function showAdminInboxes() {
+    if (websocket) {
+        stopReconnection();
+        websocket.close();
+    }
+    currentAddress = '';
+    updateClaimStatus(false);
+    switchTab('emails');
+    hideMobileDetail();
+    emails = [];
+    selectedEmailId = null;
+    emailDetail.innerHTML = '<div class="empty-state"><p>📬 Select an email to view its contents</p></div>';
+    emailList.innerHTML = '<div class="empty-state"><p>⏳ Loading inboxes...</p></div>';
+
+    try {
+        const response = await authFetch('/api/admin/inboxes');
+        if (!response.ok) throw new Error(await response.text());
+        const { inboxes } = await response.json();
+        document.getElementById('emailCount').textContent = `${inboxes.length} inboxes`;
+        emailList.innerHTML = inboxes.length === 0
+            ? '<div class="empty-state"><p>📭 No inboxes yet</p></div>'
+            : inboxes.map(inbox => `
+                <div class="email-item" data-address="${escapeHtml(inbox.address)}"
+                     onclick="openAdminInbox(this.dataset.address)">
+                    <div class="from">${escapeHtml(inbox.address)}</div>
+                    <div class="subject">${inbox.email_count} email${inbox.email_count === 1 ? '' : 's'}</div>
+                    <div class="timestamp">${formatDate(new Date(inbox.last_received))}</div>
+                </div>
+            `).join('');
+    } catch (error) {
+        emailList.innerHTML = `<div class="empty-state"><p>❌ Failed to load inboxes</p><p style="font-size: 0.875rem; color: var(--text-secondary);">${escapeHtml(error.message)}</p></div>`;
+    }
+}
+
+// Deliberately leaves currentAddress empty: reconnect/webhook/search code would
+// call password-checked endpoints, and their 401 would log the admin out.
+async function openAdminInbox(address) {
+    emailAddressInput.value = address;
+    selectedEmailId = null;
+    emailList.innerHTML = '<div class="empty-state"><p>⏳ Loading emails...</p></div>';
+
+    try {
+        const response = await authFetch(`/api/admin/inboxes/${encodeURIComponent(address)}/emails`);
+        if (!response.ok) throw new Error(await response.text());
+        emails = (await response.json()).emails || [];
+        displayEmails(emails);
+        updateEmailCount(emails.length);
+    } catch (error) {
+        emailList.innerHTML = `<div class="empty-state"><p>❌ Failed to load emails</p><p style="font-size: 0.875rem; color: var(--text-secondary);">${escapeHtml(error.message)}</p></div>`;
     }
 }
 

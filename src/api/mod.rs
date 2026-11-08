@@ -20,7 +20,10 @@ use crate::outbound::OutboundMailer;
 use crate::rate_limit;
 use crate::storage::{models::Email, StorageBackend};
 use crate::webhooks::WebhookTrigger;
-use admin::{delete_rate_limit, get_rate_limit, get_rate_limit_stats, set_rate_limit};
+use admin::{
+    delete_rate_limit, get_inbox_emails, get_rate_limit, get_rate_limit_stats, list_inboxes,
+    set_rate_limit,
+};
 use handlers::{
     check_mailbox_status, claim_mailbox, create_webhook, delete_email, delete_webhook,
     get_email_by_id, get_emails_for_address, get_sent_emails, get_webhook_by_id,
@@ -152,6 +155,16 @@ pub fn create_router(
             auth::auth_config_middleware,
         ));
 
+    // Admin check happens in the handlers via the AuthenticatedUser extractor
+    let admin_routes = Router::new()
+        .route("/api/admin/inboxes", get(list_inboxes))
+        .route("/api/admin/inboxes/:address/emails", get(get_inbox_emails))
+        .with_state(storage.clone())
+        .layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth::auth_config_middleware,
+        ));
+
     let mut router = Router::new()
         .route("/api/health", get(|| async { "ok" }))
         // WebSocket route (needs domain for normalization)
@@ -159,6 +172,7 @@ pub fn create_router(
         .with_state(ws_state)
         // Merge auth routes (public)
         .merge(auth_routes)
+        .merge(admin_routes)
         // Merge protected routes
         .merge(protected_routes);
 

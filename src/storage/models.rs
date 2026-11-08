@@ -18,6 +18,14 @@ pub struct Attachment {
     pub content: String,
 }
 
+/// Per-address summary for the admin inbox list
+#[derive(Debug, Clone, Serialize)]
+pub struct InboxSummary {
+    pub address: String,
+    pub email_count: i64,
+    pub last_received: String,
+}
+
 /// Email model representing a stored email
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Email {

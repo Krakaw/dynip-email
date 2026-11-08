@@ -248,6 +248,7 @@ async fn run() -> Result<()> {
         jwt_secret: config.jwt_secret.clone(),
         jwt_expiry_hours: config.jwt_expiry_hours,
         auth_domains: config.auth_domains.clone(),
+        admin_emails: config.admin_emails.clone(),
         outbound_enabled: config.outbound_enabled,
     };
 
@@ -468,6 +469,7 @@ mod tests {
             jwt_secret: "test-secret".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            admin_emails: vec![],
             outbound_enabled: false,
             dkim_private_key_path: None,
             dkim_selector: "default".to_string(),

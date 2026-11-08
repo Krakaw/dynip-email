@@ -7,7 +7,7 @@ use tracing::{error, info, warn};
 
 use super::{
     fts::{SearchQuery, SearchResult},
-    models::{Email, Mailbox, SentEmail, User, Webhook, WebhookEvent},
+    models::{Email, InboxSummary, Mailbox, SentEmail, User, Webhook, WebhookEvent},
     StorageBackend,
 };
 
@@ -1143,6 +1143,28 @@ impl StorageBackend for SqliteBackend {
             .collect();
 
         Ok(emails)
+    }
+
+    async fn list_inboxes(&self) -> Result<Vec<InboxSummary>> {
+        let rows = sqlx::query_as::<_, (String, i64, String)>(
+            r#"
+            SELECT to_address, COUNT(*), MAX(timestamp)
+            FROM emails
+            GROUP BY to_address
+            ORDER BY MAX(timestamp) DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(address, email_count, last_received)| InboxSummary {
+                address,
+                email_count,
+                last_received,
+            })
+            .collect())
     }
 }
 

@@ -6,7 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use fts::{SearchQuery, SearchResult};
-use models::{Email, Mailbox, SentEmail, User, Webhook, WebhookEvent};
+use models::{Email, InboxSummary, Mailbox, SentEmail, User, Webhook, WebhookEvent};
 
 use crate::rate_limit::{RateLimit, RateLimitRequest};
 
@@ -120,4 +120,7 @@ pub trait StorageBackend: Send + Sync {
 
     /// Get sent emails for a given from address
     async fn get_sent_emails(&self, from_address: &str) -> Result<Vec<SentEmail>>;
+
+    /// List every address that has received email, newest activity first
+    async fn list_inboxes(&self) -> Result<Vec<InboxSummary>>;
 }

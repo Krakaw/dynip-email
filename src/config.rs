@@ -24,6 +24,7 @@ pub struct Config {
     pub jwt_secret: String,
     pub jwt_expiry_hours: u64,
     pub auth_domains: Option<Vec<String>>,
+    pub admin_emails: Vec<String>,
     // Outbound email configuration
     pub outbound_enabled: bool,
     pub dkim_private_key_path: Option<PathBuf>,
@@ -192,6 +193,13 @@ impl Config {
             }
         }
 
+        let admin_emails = std::env::var("ADMIN_EMAIL")
+            .unwrap_or_default()
+            .split(',')
+            .map(|e| e.trim().to_lowercase())
+            .filter(|e| !e.is_empty())
+            .collect();
+
         Ok(Config {
             smtp_port,
             smtp_starttls_port,
@@ -210,6 +218,7 @@ impl Config {
             jwt_secret,
             jwt_expiry_hours,
             auth_domains,
+            admin_emails,
             outbound_enabled,
             dkim_private_key_path,
             dkim_selector,
@@ -368,6 +377,13 @@ mod tests {
                     .collect()
             });
 
+        let admin_emails = std::env::var("ADMIN_EMAIL")
+            .unwrap_or_default()
+            .split(',')
+            .map(|e| e.trim().to_lowercase())
+            .filter(|e| !e.is_empty())
+            .collect();
+
         Ok(Config {
             smtp_port,
             smtp_starttls_port,
@@ -386,6 +402,7 @@ mod tests {
             jwt_secret,
             jwt_expiry_hours,
             auth_domains,
+            admin_emails,
             outbound_enabled: false,
             dkim_private_key_path: None,
             dkim_selector: "default".to_string(),

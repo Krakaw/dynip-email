@@ -75,6 +75,7 @@ Key configuration options:
 | `JWT_SECRET` | - | Secret key for JWT tokens (required when auth enabled) |
 | `JWT_EXPIRY_HOURS` | 744 (31 days) | JWT token expiry time in hours |
 | `AUTH_DOMAIN` | - | Restrict registration to emails from these domains (comma-separated: "example.com,company.com") |
+| `ADMIN_EMAIL` | - | Users (comma-separated) who can list all inboxes and read any mailbox, bypassing mailbox passwords. Requires auth |
 | `RUST_LOG` | info | Log level (trace, debug, info, warn, error) |
 
 For detailed configuration options, see the [Configuration Guide](docs/CONFIGURATION.md).

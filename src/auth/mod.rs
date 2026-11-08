@@ -41,7 +41,15 @@ pub struct AuthConfig {
     pub jwt_expiry_hours: u64,
     /// Optional domain restrictions for registration (e.g., vec!["example.com", "company.com"])
     pub auth_domains: Option<Vec<String>>,
+    /// Lowercased emails allowed to read every mailbox (ADMIN_EMAIL)
+    pub admin_emails: Vec<String>,
     pub outbound_enabled: bool,
+}
+
+impl AuthConfig {
+    pub fn is_admin(&self, email: &str) -> bool {
+        self.enabled && self.admin_emails.contains(&email.to_lowercase())
+    }
 }
 
 /// Request body for registration
@@ -209,7 +217,8 @@ pub async fn register(
         "token": token,
         "user": {
             "id": user.id,
-            "email": user.email
+            "email": user.email,
+            "is_admin": config.is_admin(&user.email)
         }
     })))
 }
@@ -257,7 +266,8 @@ pub async fn login(
         "token": token,
         "user": {
             "id": user.id,
-            "email": user.email
+            "email": user.email,
+            "is_admin": config.is_admin(&user.email)
         }
     })))
 }
@@ -283,7 +293,8 @@ pub async fn me(
     Ok(Json(json!({
         "id": user.id,
         "email": user.email,
-        "created_at": user.created_at
+        "created_at": user.created_at,
+        "is_admin": claims.is_admin
     })))
 }
 
@@ -315,6 +326,7 @@ pub struct AuthenticatedUser {
     pub user_id: String,
     #[allow(dead_code)]
     pub email: String,
+    pub is_admin: bool,
 }
 
 /// Extractor for authenticated requests
@@ -345,6 +357,7 @@ where
             return Ok(AuthenticatedUser {
                 user_id: "anonymous".to_string(),
                 email: "anonymous".to_string(),
+                is_admin: false,
             });
         }
 
@@ -372,6 +385,7 @@ where
             .map_err(|e| (StatusCode::UNAUTHORIZED, format!("Invalid token: {}", e)))?;
 
         Ok(AuthenticatedUser {
+            is_admin: auth_config.is_admin(&claims.email),
             user_id: claims.sub,
             email: claims.email,
         })
@@ -464,6 +478,7 @@ mod tests {
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            admin_emails: vec![],
             outbound_enabled: false,
         };
 
@@ -482,6 +497,7 @@ mod tests {
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            admin_emails: vec![],
             outbound_enabled: false,
         };
 
@@ -496,6 +512,7 @@ mod tests {
             jwt_secret: "secret1".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            admin_emails: vec![],
             outbound_enabled: false,
         };
 
@@ -504,6 +521,7 @@ mod tests {
             jwt_secret: "secret2".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            admin_emails: vec![],
             outbound_enabled: false,
         };
 
@@ -558,6 +576,7 @@ mod tests {
             jwt_secret: "test-secret-key-for-testing".to_string(),
             jwt_expiry_hours: 24,
             auth_domains: None,
+            admin_emails: vec![],
             outbound_enabled: false,
         }
     }
@@ -701,6 +720,7 @@ mod tests {
         let storage = test_storage().await;
         let config = AuthConfig {
             auth_domains: Some(vec!["allowed.com".to_string()]),
+            admin_emails: vec![],
             ..test_auth_config()
         };
         let app = auth_app(storage, config);
@@ -714,6 +734,7 @@ mod tests {
         let storage = test_storage().await;
         let config = AuthConfig {
             auth_domains: Some(vec!["allowed.com".to_string()]),
+            admin_emails: vec![],
             ..test_auth_config()
         };
         let app = auth_app(storage, config);
@@ -727,6 +748,7 @@ mod tests {
         let storage = test_storage().await;
         let config = AuthConfig {
             auth_domains: Some(vec!["allowed.com".to_string(), "company.com".to_string()]),
+            admin_emails: vec![],
             ..test_auth_config()
         };
         let app = auth_app(storage.clone(), config.clone());
@@ -746,6 +768,7 @@ mod tests {
         let storage = test_storage().await;
         let config = AuthConfig {
             auth_domains: Some(vec!["allowed.com".to_string(), "company.com".to_string()]),
+            admin_emails: vec![],
             ..test_auth_config()
         };
         let app = auth_app(storage, config);
@@ -1116,6 +1139,7 @@ mod tests {
         let storage = test_storage().await;
         let config = AuthConfig {
             auth_domains: Some(vec!["corp.com".to_string(), "company.com".to_string()]),
+            admin_emails: vec![],
             ..test_auth_config()
         };
         let app = auth_app(storage, config);
@@ -1140,6 +1164,7 @@ mod tests {
         let storage = test_storage().await;
         let config = AuthConfig {
             auth_domains: None,
+            admin_emails: vec![],
             ..test_auth_config()
         };
         let app = auth_app(storage, config);
