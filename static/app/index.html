@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css?v=4">
+<link rel="stylesheet" href="/style.css?v=6">
 </head>
 <body class="app-page">
 <div class="app" id="app">
@@ -23,7 +23,10 @@
     <div class="side-sec">
       <label class="label" for="openInput">Open a mailbox</label>
       <div class="row">
-        <input class="input" id="openInput" placeholder="name or full address" spellcheck="false" autocomplete="off" data-lpignore="true" data-1p-ignore>
+        <div class="addr-field sm">
+          <input id="openInput" placeholder="name" spellcheck="false" autocomplete="off" data-lpignore="true" data-1p-ignore>
+          <span>@<span class="domain">domain</span></span>
+        </div>
         <button class="btn primary md" id="openBtn" style="height:32px">Open</button>
       </div>
       <button class="link" id="randomBtn" style="align-self:flex-start;height:24px">Generate a random address</button>
@@ -208,6 +211,6 @@
 
 <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button class="btn sm" id="toastClose">Dismiss</button></div>
 
-<script src="/app.js?v=6"></script>
+<script src="/app.js?v=7"></script>
 </body>
 </html>

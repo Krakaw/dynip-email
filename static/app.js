@@ -31,6 +31,9 @@ function normalize(raw) {
     return a;
 }
 
+// Addresses on the server's own domain are shown as just the name.
+const localPart = (a) => (S.domain && a.endsWith('@' + S.domain) ? a.slice(0, -S.domain.length - 1) : a);
+
 function rel(ts) {
     const t = new Date(ts).getTime(), d = Date.now() - t;
     if (d < M) return 'Just now';
@@ -217,7 +220,7 @@ async function openMailbox(raw) {
 async function loadMailbox(address, password, claimed) {
     closeMailbox();
     Object.assign(S, { address, password, claimed, view: S.view === 'admin' ? 'inbox' : S.view });
-    $('openInput').value = address;
+    $('openInput').value = localPart(address);
     setUrl(address);
     pushRecent(address);
     S.loading = true;
@@ -862,7 +865,7 @@ function bind() {
 
     $('modalForm').onsubmit = (e) => { e.preventDefault(); submitModal(); };
     $('mCancel').onclick = () => {
-        if (S.modal === 'unlock') $('openInput').value = S.address;
+        if (S.modal === 'unlock') $('openInput').value = localPart(S.address);
         closeModal();
     };
     $('modal').oncancel = (e) => { if ($('mCancel').hidden) e.preventDefault(); else S.modal = null; };
