@@ -212,6 +212,7 @@ async function openMailbox(raw) {
     const address = normalize(raw);
     if (!address) return;
     closeDrawer();
+    $('openInput').value = localPart(address);
     S.opening = true; // keeps the landing view hidden while a ?mailbox= link resolves
     try {
         const locked = !!(await apiJson(`/api/mailbox/${enc(address)}/status`)).is_locked;
@@ -234,7 +235,6 @@ async function openMailbox(raw) {
 async function loadMailbox(address, password, claimed) {
     closeMailbox();
     Object.assign(S, { address, password, claimed, view: S.view === 'admin' ? 'inbox' : S.view });
-    $('openInput').value = localPart(address);
     setUrl(address);
     pushRecent(address);
     S.loading = true;
