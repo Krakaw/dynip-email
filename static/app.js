@@ -652,6 +652,8 @@ function render() {
     const unread = S.emails.filter((e) => e.isNew).length;
     const canCompose = S.outbound && has && !S.adminMode && !needsLogin();
 
+    $('app').classList.toggle('skeleton', needsLogin());
+
     // Sidebar
     $('currentBox').hidden = !has;
     $('addr').textContent = S.address;

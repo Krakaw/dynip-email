@@ -8,10 +8,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css?v=7">
+<link rel="stylesheet" href="/style.css?v=8">
 </head>
 <body class="app-page">
-<div class="app" id="app">
+<div class="app skeleton" id="app">
   <div class="backdrop mobile-only" id="backdrop" hidden></div>
 
   <aside class="side" id="side">
@@ -19,6 +19,7 @@
       <a href="/" class="brand"><span class="logo"></span>dyn-ip email</a>
       <button class="btn md mobile-only" id="closeDrawer" style="border:0;background:transparent">Close</button>
     </div>
+    <div class="skel" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
     <div class="side-sec">
       <label class="label" for="openInput">Open a mailbox</label>
@@ -63,6 +64,7 @@
     <div class="tabs mobile-only" id="tabs" hidden></div>
 
     <div class="content">
+      <div class="skel" aria-busy="true" aria-label="Loading"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <!-- No mailbox open -->
       <div class="center" id="emptyView" hidden>
         <div class="stack">
@@ -207,6 +209,6 @@
 
 <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button class="btn sm" id="toastClose">Dismiss</button></div>
 
-<script src="/app.js?v=7"></script>
+<script src="/app.js?v=8"></script>
 </body>
 </html>

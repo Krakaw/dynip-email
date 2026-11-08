@@ -82,6 +82,16 @@ pre.code { margin: 0; padding: 12px; background: var(--soft); border: 1px solid 
 #userEmail { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #userRole { font-size: 12px; color: var(--muted); }
 
+/* Placeholder shown until auth is known and, when auth is on, until the user logs in. */
+.skel { display: none; flex-direction: column; gap: 12px; padding: 16px 12px; }
+.app.skeleton .skel { display: flex; }
+.app.skeleton .side > :not(.bar, .skel), .app.skeleton .content > :not(.skel) { display: none; }
+.content > .skel { flex: 0 1 360px; border-right: 1px solid var(--line); padding: 16px; gap: 14px; }
+.skel i { display: block; height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--sel) 25%, var(--line) 50%, var(--sel) 75%) 0 0 / 200% 100%; animation: shimmer 1.4s linear infinite; }
+.skel i:nth-child(3n+2) { width: 70%; }
+.skel i:nth-child(3n) { width: 45%; margin-bottom: 8px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel i { animation: none; } }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .mobile-only { display: none !important; }
 .content { flex: 1; min-height: 0; display: flex; }
@@ -199,7 +209,7 @@ dialog textarea:focus { border-color: var(--brand); }
   .app.drawer .side { transform: none; }
   .mobile-head { justify-content: flex-start; padding: 0 12px; }
   #mobileTitle { flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
-  .list { flex: 1 1 auto; border-right: 0; }
+  .list, .content > .skel { flex: 1 1 auto; border-right: 0; }
   .scroll { padding: 16px; }
   .app.detail .list { display: none; }
   .app:not(.detail) .reader { display: none; }
