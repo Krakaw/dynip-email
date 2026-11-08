@@ -910,21 +910,31 @@ async function showAdminInboxes() {
     emailDetail.innerHTML = '<div class="empty-state"><p>📬 Select an email to view its contents</p></div>';
     emailList.innerHTML = '<div class="empty-state"><p>⏳ Loading inboxes...</p></div>';
 
+    adminInboxes = [];
+    await loadMoreAdminInboxes();
+}
+
+let adminInboxes = [];
+
+async function loadMoreAdminInboxes() {
     try {
-        const response = await authFetch('/api/admin/inboxes');
+        const response = await authFetch(`/api/admin/inboxes?limit=100&offset=${adminInboxes.length}`);
         if (!response.ok) throw new Error(await response.text());
-        const { inboxes } = await response.json();
-        document.getElementById('emailCount').textContent = `${inboxes.length} inboxes`;
-        emailList.innerHTML = inboxes.length === 0
+        const { inboxes, total } = await response.json();
+        adminInboxes = adminInboxes.concat(inboxes);
+        document.getElementById('emailCount').textContent = `${total} inboxes`;
+        emailList.innerHTML = adminInboxes.length === 0
             ? '<div class="empty-state"><p>📭 No inboxes yet</p></div>'
-            : inboxes.map(inbox => `
+            : adminInboxes.map(inbox => `
                 <div class="email-item" data-address="${escapeHtml(inbox.address)}"
                      onclick="openAdminInbox(this.dataset.address)">
                     <div class="from">${escapeHtml(inbox.address)}</div>
                     <div class="subject">${inbox.email_count} email${inbox.email_count === 1 ? '' : 's'}</div>
                     <div class="timestamp">${formatDate(new Date(inbox.last_received))}</div>
                 </div>
-            `).join('');
+            `).join('') + (adminInboxes.length < total && inboxes.length > 0
+                ? `<button class="btn-secondary" style="width: 100%; margin: 0.5rem 0;" onclick="loadMoreAdminInboxes()">Load more (${adminInboxes.length} of ${total})</button>`
+                : '');
     } catch (error) {
         emailList.innerHTML = `<div class="empty-state"><p>❌ Failed to load inboxes</p><p style="font-size: 0.875rem; color: var(--text-secondary);">${escapeHtml(error.message)}</p></div>`;
     }

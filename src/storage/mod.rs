@@ -121,6 +121,7 @@ pub trait StorageBackend: Send + Sync {
     /// Get sent emails for a given from address
     async fn get_sent_emails(&self, from_address: &str) -> Result<Vec<SentEmail>>;
 
-    /// List every address that has received email, newest activity first
-    async fn list_inboxes(&self) -> Result<Vec<InboxSummary>>;
+    /// Page of addresses that have received email, newest activity first,
+    /// plus the total number of such addresses
+    async fn list_inboxes(&self, limit: i64, offset: i64) -> Result<(Vec<InboxSummary>, i64)>;
 }

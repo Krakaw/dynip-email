@@ -1145,26 +1145,42 @@ impl StorageBackend for SqliteBackend {
         Ok(emails)
     }
 
-    async fn list_inboxes(&self) -> Result<Vec<InboxSummary>> {
-        let rows = sqlx::query_as::<_, (String, i64, String)>(
+    async fn list_inboxes(&self, limit: i64, offset: i64) -> Result<(Vec<InboxSummary>, i64)> {
+        // COUNT(*) OVER () is the number of groups, so one query gives page + total
+        let rows = sqlx::query_as::<_, (String, i64, String, i64)>(
             r#"
-            SELECT to_address, COUNT(*), MAX(timestamp)
+            SELECT to_address, COUNT(*), MAX(timestamp), COUNT(*) OVER ()
             FROM emails
             GROUP BY to_address
-            ORDER BY MAX(timestamp) DESC
+            ORDER BY MAX(timestamp) DESC, to_address
+            LIMIT ? OFFSET ?
             "#,
         )
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows
+        let total = match rows.first() {
+            Some(row) => row.3,
+            // Past the last page: no rows, so count separately
+            None => {
+                sqlx::query_as::<_, (i64,)>("SELECT COUNT(DISTINCT to_address) FROM emails")
+                    .fetch_one(&self.pool)
+                    .await?
+                    .0
+            }
+        };
+
+        let inboxes = rows
             .into_iter()
-            .map(|(address, email_count, last_received)| InboxSummary {
+            .map(|(address, email_count, last_received, _)| InboxSummary {
                 address,
                 email_count,
                 last_received,
             })
-            .collect())
+            .collect();
+        Ok((inboxes, total))
     }
 }
 

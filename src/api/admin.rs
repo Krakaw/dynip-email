@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -20,17 +20,26 @@ fn require_admin(user: &AuthenticatedUser) -> Result<(), (StatusCode, String)> {
     }
 }
 
-/// List all inboxes that have received email
+#[derive(Debug, Deserialize)]
+pub struct PageParams {
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+/// List inboxes that have received email, one page at a time
 pub async fn list_inboxes(
+    Query(page): Query<PageParams>,
     State(storage): State<Arc<dyn StorageBackend>>,
     user: AuthenticatedUser,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     require_admin(&user)?;
-    let inboxes = storage
-        .list_inboxes()
+    let limit = page.limit.unwrap_or(100).clamp(1, 500);
+    let offset = page.offset.unwrap_or(0).max(0);
+    let (inboxes, total) = storage
+        .list_inboxes(limit, offset)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    Ok(Json(json!({ "inboxes": inboxes })))
+    Ok(Json(json!({ "inboxes": inboxes, "total": total })))
 }
 
 /// Get every email for an inbox, bypassing mailbox passwords
@@ -84,7 +93,9 @@ impl From<RateLimit> for RateLimitResponse {
 pub async fn get_rate_limit(
     Path(address): Path<String>,
     State(storage): State<Arc<dyn StorageBackend>>,
+    user: AuthenticatedUser,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    require_admin(&user)?;
     match storage.get_rate_limit(&address).await {
         Ok(Some(limit)) => Ok(Json(json!(RateLimitResponse::from(limit)))),
         Ok(None) => {
@@ -103,8 +114,10 @@ pub async fn get_rate_limit(
 pub async fn set_rate_limit(
     Path(address): Path<String>,
     State(storage): State<Arc<dyn StorageBackend>>,
+    user: AuthenticatedUser,
     Json(request): Json<SetRateLimitRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    require_admin(&user)?;
     // Validate inputs
     if request.requests_per_hour == 0 || request.requests_per_day == 0 {
         return Err((
@@ -187,7 +200,9 @@ pub async fn set_rate_limit(
 pub async fn delete_rate_limit(
     Path(address): Path<String>,
     State(storage): State<Arc<dyn StorageBackend>>,
+    user: AuthenticatedUser,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    require_admin(&user)?;
     storage.delete_rate_limit(&address).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -206,7 +221,9 @@ pub async fn delete_rate_limit(
 pub async fn get_rate_limit_stats(
     Path(address): Path<String>,
     State(storage): State<Arc<dyn StorageBackend>>,
+    user: AuthenticatedUser,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    require_admin(&user)?;
     // Get rate limit
     let rate_limit = match storage.get_rate_limit(&address).await {
         Ok(Some(limit)) => limit,
@@ -272,6 +289,25 @@ mod tests {
     use super::*;
     use crate::storage::sqlite::SqliteBackend;
 
+    fn admin() -> AuthenticatedUser {
+        AuthenticatedUser {
+            user_id: "id".into(),
+            email: "admin@example.com".into(),
+            is_admin: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_routes_require_admin() {
+        let storage = create_test_storage().await;
+        let non_admin = AuthenticatedUser {
+            is_admin: false,
+            ..admin()
+        };
+        let result = get_rate_limit(Path("a@example.com".into()), State(storage), non_admin).await;
+        assert_eq!(result.unwrap_err().0, StatusCode::FORBIDDEN);
+    }
+
     async fn create_test_storage() -> Arc<dyn StorageBackend> {
         Arc::new(SqliteBackend::new("sqlite::memory:").await.unwrap())
     }
@@ -281,7 +317,7 @@ mod tests {
         let storage = create_test_storage().await;
         let address = "test@example.com".to_string();
 
-        let result = get_rate_limit(Path(address), State(storage)).await;
+        let result = get_rate_limit(Path(address), State(storage), admin()).await;
         assert!(result.is_ok());
 
         let json = result.unwrap().0;
@@ -299,11 +335,16 @@ mod tests {
             requests_per_day: 500,
         };
 
-        let set_result =
-            set_rate_limit(Path(address.clone()), State(storage.clone()), Json(request)).await;
+        let set_result = set_rate_limit(
+            Path(address.clone()),
+            State(storage.clone()),
+            admin(),
+            Json(request),
+        )
+        .await;
         assert!(set_result.is_ok());
 
-        let get_result = get_rate_limit(Path(address), State(storage)).await;
+        let get_result = get_rate_limit(Path(address), State(storage), admin()).await;
         assert!(get_result.is_ok());
 
         let json = get_result.unwrap().0;
@@ -322,8 +363,13 @@ mod tests {
             requests_per_day: 500,
         };
 
-        let result =
-            set_rate_limit(Path(address.clone()), State(storage.clone()), Json(request)).await;
+        let result = set_rate_limit(
+            Path(address.clone()),
+            State(storage.clone()),
+            admin(),
+            Json(request),
+        )
+        .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().0, StatusCode::BAD_REQUEST);
 
@@ -333,7 +379,7 @@ mod tests {
             requests_per_day: 500,
         };
 
-        let result = set_rate_limit(Path(address), State(storage), Json(request)).await;
+        let result = set_rate_limit(Path(address), State(storage), admin(), Json(request)).await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().0, StatusCode::BAD_REQUEST);
     }
@@ -349,16 +395,22 @@ mod tests {
             requests_per_day: 500,
         };
 
-        set_rate_limit(Path(address.clone()), State(storage.clone()), Json(request))
-            .await
-            .unwrap();
+        set_rate_limit(
+            Path(address.clone()),
+            State(storage.clone()),
+            admin(),
+            Json(request),
+        )
+        .await
+        .unwrap();
 
         // Delete it
-        let delete_result = delete_rate_limit(Path(address.clone()), State(storage.clone())).await;
+        let delete_result =
+            delete_rate_limit(Path(address.clone()), State(storage.clone()), admin()).await;
         assert!(delete_result.is_ok());
 
         // Verify it's gone (returns default)
-        let get_result = get_rate_limit(Path(address), State(storage)).await;
+        let get_result = get_rate_limit(Path(address), State(storage), admin()).await;
         let json = get_result.unwrap().0;
         assert_eq!(json["requests_per_hour"], 100); // Default
     }
@@ -386,7 +438,14 @@ mod tests {
             is_admin,
         };
 
-        let denied = list_inboxes(State(storage.clone()), as_user(false)).await;
+        let first_page = || {
+            Query(PageParams {
+                limit: None,
+                offset: None,
+            })
+        };
+
+        let denied = list_inboxes(first_page(), State(storage.clone()), as_user(false)).await;
         assert_eq!(denied.unwrap_err().0, StatusCode::FORBIDDEN);
         let denied = get_inbox_emails(
             Path("box@example.com".into()),
@@ -396,12 +455,13 @@ mod tests {
         .await;
         assert_eq!(denied.unwrap_err().0, StatusCode::FORBIDDEN);
 
-        let inboxes = list_inboxes(State(storage.clone()), as_user(true))
+        let inboxes = list_inboxes(first_page(), State(storage.clone()), as_user(true))
             .await
             .unwrap()
             .0;
         assert_eq!(inboxes["inboxes"][0]["address"], "box@example.com");
         assert_eq!(inboxes["inboxes"][0]["email_count"], 1);
+        assert_eq!(inboxes["total"], 1);
 
         let emails = get_inbox_emails(
             Path("box@example.com".into()),
@@ -412,6 +472,34 @@ mod tests {
         .unwrap()
         .0;
         assert_eq!(emails["emails"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_inboxes_pages() {
+        use crate::storage::models::Email;
+
+        let storage = create_test_storage().await;
+        for i in 0..5 {
+            let mut email = Email::new(
+                format!("box{}@example.com", i),
+                "s@x.com".into(),
+                "hi".into(),
+                "body".into(),
+                None,
+                vec![],
+            );
+            email.timestamp = chrono::Utc::now() - chrono::Duration::minutes(i);
+            storage.store_email(email).await.unwrap();
+        }
+
+        let (page, total) = storage.list_inboxes(2, 2).await.unwrap();
+        assert_eq!(total, 5);
+        let addresses: Vec<_> = page.iter().map(|i| i.address.as_str()).collect();
+        assert_eq!(addresses, ["box2@example.com", "box3@example.com"]);
+
+        let (past_end, total) = storage.list_inboxes(2, 10).await.unwrap();
+        assert!(past_end.is_empty());
+        assert_eq!(total, 5);
     }
 
     #[test]

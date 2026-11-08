@@ -90,18 +90,6 @@ pub fn create_router(
         .with_state(storage.clone())
         .route("/api/webhook/:id/test", post(test_webhook))
         .with_state(storage.clone())
-        // Admin routes for rate limiting
-        .route("/api/admin/rate-limit/:address", get(get_rate_limit))
-        .with_state(storage.clone())
-        .route("/api/admin/rate-limit/:address", post(set_rate_limit))
-        .with_state(storage.clone())
-        .route("/api/admin/rate-limit/:address", delete(delete_rate_limit))
-        .with_state(storage.clone())
-        .route(
-            "/api/admin/rate-limit/:address/stats",
-            get(get_rate_limit_stats),
-        )
-        .with_state(storage.clone())
         // Apply rate limiting middleware first
         .layer(middleware::from_fn_with_state(
             storage.clone(),
@@ -159,6 +147,16 @@ pub fn create_router(
     let admin_routes = Router::new()
         .route("/api/admin/inboxes", get(list_inboxes))
         .route("/api/admin/inboxes/:address/emails", get(get_inbox_emails))
+        .route(
+            "/api/admin/rate-limit/:address",
+            get(get_rate_limit)
+                .post(set_rate_limit)
+                .delete(delete_rate_limit),
+        )
+        .route(
+            "/api/admin/rate-limit/:address/stats",
+            get(get_rate_limit_stats),
+        )
         .with_state(storage.clone())
         .layer(middleware::from_fn_with_state(
             auth_config.clone(),
