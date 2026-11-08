@@ -283,7 +283,10 @@ async fn run() -> Result<()> {
         };
 
         let mailer = outbound::OutboundMailer::new(&config, dkim_signer)?;
-        info!("Outbound email enabled (domain: {})", mailer.sender_domain());
+        info!(
+            "Outbound email enabled (domain: {})",
+            mailer.sender_domain()
+        );
         Some(Arc::new(mailer))
     } else {
         info!("Outbound email disabled");

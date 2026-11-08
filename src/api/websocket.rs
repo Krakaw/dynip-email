@@ -59,11 +59,11 @@ pub struct WsState {
 impl WsState {
     /// Normalize an email address by appending domain if not present
     fn normalize_address(&self, input: &str) -> String {
-        let input = input.trim();
+        let input = input.trim().to_lowercase();
 
         // If it already contains @, use as-is
         if input.contains('@') {
-            input.to_string()
+            input
         } else {
             // Append the server domain
             format!("{}@{}", input, self.domain_name)

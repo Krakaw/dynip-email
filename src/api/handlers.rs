@@ -24,11 +24,11 @@ pub struct AppConfig {
 impl AppConfig {
     /// Normalize an email address by appending domain if not present
     pub fn normalize_address(&self, input: &str) -> String {
-        let input = input.trim();
+        let input = input.trim().to_lowercase();
 
         // If it already contains @, use as-is
         if input.contains('@') {
-            input.to_string()
+            input
         } else {
             // Append the server domain
             format!("{}@{}", input, self.domain_name)
@@ -39,11 +39,10 @@ impl AppConfig {
     /// Used for mailbox storage - mailboxes are keyed by username only,
     /// allowing multiple domains to map to the same mailbox
     pub fn extract_local_part(&self, input: &str) -> String {
-        let input = input.trim();
-        if input.contains('@') {
-            input.split('@').next().unwrap_or(input).to_string()
-        } else {
-            input.to_string()
+        let input = input.trim().to_lowercase();
+        match input.split_once('@') {
+            Some((local, _)) => local.to_string(),
+            None => input,
         }
     }
 }

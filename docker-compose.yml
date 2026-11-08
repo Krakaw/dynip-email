@@ -8,6 +8,7 @@ services:
       # Web interface
       - "3000:3000"
       # SMTP ports
+      - "25:2525"    # MX delivery -> plain SMTP listener
       - "2525:2525"  # Non-TLS SMTP
       - "587:587"    # STARTTLS (if SSL enabled)
       - "465:465"    # SMTPS (if SSL enabled)
@@ -38,7 +39,7 @@ services:
     networks:
       - dynip-email-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/emails/health@test.com"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

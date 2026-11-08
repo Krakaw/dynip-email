@@ -261,13 +261,14 @@ impl Handler for SmtpHandler {
         to: &[String],
     ) -> mailin_embedded::Response {
         info!("Receiving email from {} to {:?}", from, to);
+        let to: Vec<String> = to.iter().map(|r| r.to_lowercase()).collect();
 
         // Check domain validation if enabled
         if self.reject_non_domain_emails {
-            for recipient in to {
+            for recipient in &to {
                 if let Some(at_pos) = recipient.find('@') {
                     let domain = &recipient[at_pos + 1..];
-                    if domain != self.domain_name {
+                    if !domain.eq_ignore_ascii_case(&self.domain_name) {
                         info!(
                             "Rejecting email to {} - domain {} does not match configured domain {}",
                             recipient, domain, self.domain_name
@@ -284,7 +285,7 @@ impl Handler for SmtpHandler {
 
         // Store from and to
         *self.from.lock().unwrap() = from.to_string();
-        *self.to.lock().unwrap() = to.to_vec();
+        *self.to.lock().unwrap() = to;
         self.data.lock().unwrap().clear();
 
         mailin_embedded::response::OK

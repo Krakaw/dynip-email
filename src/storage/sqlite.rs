@@ -264,6 +264,20 @@ impl SqliteBackend {
         .execute(&pool)
         .await?;
 
+        // Addresses are stored lowercase; fold rows written before that rule.
+        // OR IGNORE + DELETE drops a mixed-case row whose lowercase twin already exists.
+        for stmt in [
+            "UPDATE emails SET to_address = lower(to_address) WHERE to_address <> lower(to_address)",
+            "UPDATE webhooks SET mailbox_address = lower(mailbox_address) WHERE mailbox_address <> lower(mailbox_address)",
+            "UPDATE rate_limit_requests SET mailbox_address = lower(mailbox_address) WHERE mailbox_address <> lower(mailbox_address)",
+            "UPDATE sent_emails SET from_address = lower(from_address) WHERE from_address <> lower(from_address)",
+            "UPDATE OR IGNORE rate_limits SET mailbox_address = lower(mailbox_address) WHERE mailbox_address <> lower(mailbox_address)",
+            "DELETE FROM rate_limits WHERE mailbox_address <> lower(mailbox_address)",
+            "UPDATE OR IGNORE mailboxes SET address = lower(address) WHERE address <> lower(address)",
+        ] {
+            sqlx::query(stmt).execute(&pool).await?;
+        }
+
         info!("SQLite database initialized successfully");
 
         Ok(Self { pool })
@@ -283,7 +297,7 @@ impl StorageBackend for SqliteBackend {
             "#,
         )
         .bind(&email.id)
-        .bind(&email.to)
+        .bind(email.to.to_lowercase())
         .bind(&email.from)
         .bind(&email.subject)
         .bind(&email.body)
@@ -323,7 +337,7 @@ impl StorageBackend for SqliteBackend {
             ORDER BY timestamp DESC
             "#,
         )
-        .bind(address)
+        .bind(address.to_lowercase())
         .fetch_all(&self.pool)
         .await?;
 
@@ -466,7 +480,7 @@ impl StorageBackend for SqliteBackend {
             "#,
         )
         .bind(&webhook.id)
-        .bind(&webhook.mailbox_address)
+        .bind(webhook.mailbox_address.to_lowercase())
         .bind(&webhook.webhook_url)
         .bind(&events_json)
         .bind(webhook.created_at.to_rfc3339())
@@ -492,7 +506,7 @@ impl StorageBackend for SqliteBackend {
             ORDER BY created_at DESC
             "#,
         )
-        .bind(address)
+        .bind(address.to_lowercase())
         .fetch_all(&self.pool)
         .await?;
 
@@ -566,7 +580,7 @@ impl StorageBackend for SqliteBackend {
             WHERE id = ?
             "#,
         )
-        .bind(&webhook.mailbox_address)
+        .bind(webhook.mailbox_address.to_lowercase())
         .bind(&webhook.webhook_url)
         .bind(&events_json)
         .bind(webhook.enabled)
@@ -605,7 +619,7 @@ impl StorageBackend for SqliteBackend {
             WHERE mailbox_address = ? AND enabled = 1
             "#,
         )
-        .bind(address)
+        .bind(address.to_lowercase())
         .fetch_all(&self.pool)
         .await?;
 
@@ -644,7 +658,7 @@ impl StorageBackend for SqliteBackend {
             WHERE address = ?
             "#,
         )
-        .bind(address)
+        .bind(address.to_lowercase())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -680,7 +694,7 @@ impl StorageBackend for SqliteBackend {
                 "#,
             )
             .bind(&password_hash)
-            .bind(address)
+            .bind(address.to_lowercase())
             .execute(&self.pool)
             .await?;
         } else {
@@ -691,7 +705,7 @@ impl StorageBackend for SqliteBackend {
                 VALUES (?, ?, ?, 1)
                 "#,
             )
-            .bind(address)
+            .bind(address.to_lowercase())
             .bind(&password_hash)
             .bind(Utc::now().to_rfc3339())
             .execute(&self.pool)
@@ -715,7 +729,7 @@ impl StorageBackend for SqliteBackend {
             WHERE address = ?
             "#,
         )
-        .bind(address)
+        .bind(address.to_lowercase())
         .execute(&self.pool)
         .await?;
 
@@ -842,7 +856,7 @@ impl StorageBackend for SqliteBackend {
             VALUES (?, ?, ?, ?, ?)
             "#,
         )
-        .bind(&rate_limit.mailbox_address)
+        .bind(rate_limit.mailbox_address.to_lowercase())
         .bind(rate_limit.requests_per_hour)
         .bind(rate_limit.requests_per_day)
         .bind(rate_limit.created_at.to_rfc3339())
@@ -865,7 +879,7 @@ impl StorageBackend for SqliteBackend {
             WHERE mailbox_address = ?
             "#,
         )
-        .bind(address)
+        .bind(address.to_lowercase())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -900,7 +914,7 @@ impl StorageBackend for SqliteBackend {
         .bind(rate_limit.requests_per_hour)
         .bind(rate_limit.requests_per_day)
         .bind(Utc::now().to_rfc3339())
-        .bind(&rate_limit.mailbox_address)
+        .bind(rate_limit.mailbox_address.to_lowercase())
         .execute(&self.pool)
         .await?;
 
@@ -917,7 +931,7 @@ impl StorageBackend for SqliteBackend {
             DELETE FROM rate_limits WHERE mailbox_address = ?
             "#,
         )
-        .bind(address)
+        .bind(address.to_lowercase())
         .execute(&self.pool)
         .await?;
 
@@ -935,7 +949,7 @@ impl StorageBackend for SqliteBackend {
             VALUES (?, ?)
             "#,
         )
-        .bind(&request.mailbox_address)
+        .bind(request.mailbox_address.to_lowercase())
         .bind(request.timestamp.to_rfc3339())
         .execute(&self.pool)
         .await?;
@@ -950,7 +964,7 @@ impl StorageBackend for SqliteBackend {
             WHERE mailbox_address = ? AND timestamp >= ?
             "#,
         )
-        .bind(address)
+        .bind(address.to_lowercase())
         .bind(since.to_rfc3339())
         .fetch_one(&self.pool)
         .await?;
@@ -971,7 +985,7 @@ impl StorageBackend for SqliteBackend {
             LIMIT 1
             "#,
         )
-        .bind(address)
+        .bind(address.to_lowercase())
         .bind(since.to_rfc3339())
         .fetch_optional(&self.pool)
         .await?;
@@ -1040,7 +1054,7 @@ impl StorageBackend for SqliteBackend {
         let rows = if let Some(mailbox) = &search.mailbox {
             sqlx::query_as::<_, (String, String, String, String, String, String, f64)>(&sql)
                 .bind(&search.query)
-                .bind(mailbox)
+                .bind(mailbox.to_lowercase())
                 .bind(limit)
                 .fetch_all(&self.pool)
                 .await?
@@ -1084,7 +1098,7 @@ impl StorageBackend for SqliteBackend {
             "#,
         )
         .bind(&email.id)
-        .bind(&email.from)
+        .bind(email.from.to_lowercase())
         .bind(&email.to)
         .bind(&email.subject)
         .bind(&email.body_text)
@@ -1106,7 +1120,7 @@ impl StorageBackend for SqliteBackend {
             ORDER BY timestamp DESC
             "#,
         )
-        .bind(from_address)
+        .bind(from_address.to_lowercase())
         .fetch_all(&self.pool)
         .await?;
 
@@ -1186,6 +1200,35 @@ mod tests {
         let retrieved_email = retrieved_email.unwrap();
         assert_eq!(retrieved_email.id, email.id);
         assert_eq!(retrieved_email.to, email.to);
+    }
+
+    #[tokio::test]
+    async fn test_addresses_are_case_insensitive() {
+        let backend = create_test_backend().await;
+
+        let email = Email::new(
+            "Bob@Example.com".to_string(),
+            "sender@example.com".to_string(),
+            "s".to_string(),
+            "b".to_string(),
+            None,
+            vec![],
+        );
+        backend.store_email(email).await.unwrap();
+        assert_eq!(
+            backend
+                .get_emails_for_address("BOB@example.COM")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+
+        backend
+            .set_mailbox_password("Bob", "hash".to_string())
+            .await
+            .unwrap();
+        assert!(backend.is_mailbox_locked("bob").await.unwrap());
     }
 
     #[tokio::test]

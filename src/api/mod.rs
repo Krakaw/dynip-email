@@ -153,6 +153,7 @@ pub fn create_router(
         ));
 
     let mut router = Router::new()
+        .route("/api/health", get(|| async { "ok" }))
         // WebSocket route (needs domain for normalization)
         .route("/api/ws/:address", get(websocket_handler))
         .with_state(ws_state)
