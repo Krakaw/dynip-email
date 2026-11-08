@@ -678,7 +678,9 @@ function render() {
     const tabs = navs.filter((n) => n.on);
     $('tabs').hidden = !tabs.length;
     $('tabs').innerHTML = tabs.map((n) => `<button data-view="${n.key}" class="${active(n) ? 'active' : ''}">${n.label}</button>`).join('');
-    $('mobileTitle').textContent = has ? S.address : adminList ? 'All inboxes' : 'dyn-ip email';
+    const heading = has ? S.address : adminList ? 'All inboxes' : '';
+    $('mobileTitle').textContent = heading || 'dyn-ip email';
+    document.title = heading ? `${heading} · dyn-ip email` : 'dyn-ip email';
 
     // Main panes
     const showEmpty = !has && !adminList && !S.opening;
