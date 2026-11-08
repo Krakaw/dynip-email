@@ -145,9 +145,9 @@ impl Config {
         });
 
         let jwt_expiry_hours = std::env::var("JWT_EXPIRY_HOURS")
-            .unwrap_or_else(|_| "24".to_string())
+            .unwrap_or_else(|_| "744".to_string())
             .parse::<u64>()
-            .unwrap_or(24);
+            .unwrap_or(744);
 
         // Optional domain restriction for user registration (e.g., "example.com,company.com")
         let auth_domains = std::env::var("AUTH_DOMAIN")
@@ -353,9 +353,9 @@ mod tests {
         let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "test-secret".to_string());
 
         let jwt_expiry_hours = std::env::var("JWT_EXPIRY_HOURS")
-            .unwrap_or_else(|_| "24".to_string())
+            .unwrap_or_else(|_| "744".to_string())
             .parse::<u64>()
-            .unwrap_or(24);
+            .unwrap_or(744);
 
         let auth_domains = std::env::var("AUTH_DOMAIN")
             .ok()
@@ -439,7 +439,7 @@ mod tests {
         assert_eq!(config.imap_enabled, false);
         assert_eq!(config.imap_port, 143);
         assert_eq!(config.auth_enabled, false);
-        assert_eq!(config.jwt_expiry_hours, 24);
+        assert_eq!(config.jwt_expiry_hours, 744);
 
         // Clean up after test
         clear_all_env_vars();

@@ -852,6 +852,7 @@ function showEmailDetail(emailId) {
     }
     
     emailDetail.innerHTML = `
+        <button class="mobile-back" onclick="hideMobileDetail()">← Back</button>
         <div class="email-header">
             <div class="email-header-top">
                 <h2 class="email-subject">${escapeHtml(email.subject)}</h2>
@@ -882,6 +883,8 @@ function showEmailDetail(emailId) {
         </div>
         ${attachmentsHtml}
     `;
+    document.querySelector('.email-detail-panel').classList.add('mobile-show');
+    window.scrollTo(0, 0);
     
     // Mark as read (remove new badge)
     if (email.isNew) {
@@ -889,6 +892,10 @@ function showEmailDetail(emailId) {
         displayEmails(emails);
         updateFavicon(); // Update favicon when email is marked as read
     }
+}
+
+function hideMobileDetail() {
+    document.querySelector('.email-detail-panel').classList.remove('mobile-show');
 }
 
 // Connect to WebSocket for real-time updates
@@ -951,6 +958,7 @@ function connectWebSocket(address) {
                     if (selectedEmailId === id) {
                         selectedEmailId = null;
                         emailDetail.innerHTML = '<div class="empty-state"><p>📭 Select an email to view</p></div>';
+                        hideMobileDetail();
                         
                         // Remove active state from all email items
                         document.querySelectorAll('.email-item').forEach(item => {
@@ -1285,6 +1293,7 @@ async function deleteEmail(emailId) {
         if (selectedEmailId === emailId) {
             selectedEmailId = null;
             emailDetail.innerHTML = '<div class="no-email-selected">Select an email to view</div>';
+            hideMobileDetail();
         }
         
         // Refresh email list
@@ -1374,7 +1383,7 @@ function displaySearchResults(results) {
         <div class="email-item" onclick="loadEmailById('${result.id}')">
             <div class="email-header">
                 <span class="from">${escapeHtml(result.from)}</span>
-                <span class="time">${formatTime(result.timestamp)}</span>
+                <span class="time">${formatDate(new Date(result.timestamp))}</span>
             </div>
             <div class="subject">${escapeHtml(result.subject)}</div>
             <div class="snippet">${result.snippet}</div>
@@ -1392,8 +1401,8 @@ async function loadEmailById(emailId) {
         }
         
         const email = await response.json();
-        selectedEmailId = emailId;
-        displayEmailDetail(email);
+        if (!emails.some(e => e.id === email.id)) emails.push(email);
+        showEmailDetail(email.id);
     } catch (error) {
         console.error('Failed to load email:', error);
         emailDetail.innerHTML = '<div class="empty-state"><p>⚠️ Failed to load email</p></div>';
