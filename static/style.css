@@ -40,9 +40,6 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .input { height: 32px; padding: 0 10px; border: 1px solid var(--field); border-radius: 4px; background: #fff; color: var(--ink); font-size: 14px; outline: none; min-width: 0; }
 .input:focus { border-color: var(--brand); }
 .addr-field { display: flex; height: 40px; border: 1px solid var(--field); border-radius: 4px; overflow: hidden; background: #fff; }
-.addr-field.sm { flex: 1; min-width: 0; height: 32px; }
-.addr-field.sm input { padding: 0 8px; font-size: 13px; }
-.addr-field.sm > span { padding: 0 6px; font-size: 12px; }
 .addr-field:focus-within { border-color: var(--brand); }
 .addr-field input { flex: 1; min-width: 0; border: 0; padding: 0 12px; font-size: 16px; outline: none; color: var(--ink); font-family: var(--mono); }
 .addr-field > span { display: flex; align-items: center; padding: 0 12px; background: var(--soft); border-left: 1px solid var(--field); color: var(--muted); font-family: var(--mono); font-size: 14px; white-space: nowrap; }
